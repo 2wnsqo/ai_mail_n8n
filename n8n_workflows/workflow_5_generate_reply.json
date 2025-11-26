@@ -1,0 +1,231 @@
+{
+  "name": "워크플로우 #5: 답변 생성 (3가지 톤)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-reply",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, subject, sender_name, sender_address, body_text, received_at\nFROM email\nWHERE id = {{ $json.body.email_id }};",
+        "options": {}
+      },
+      "id": "postgres-1",
+      "name": "PostgreSQL - 이메일 조회",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [450, 400],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $input.all().length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "IF - 이메일 존재 여부",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "const email = $input.first().json;\n\nif (!email) {\n  return [{\n    json: {\n      success: false,\n      message: \"이메일을 찾을 수 없습니다.\"\n    }\n  }];\n}\n\nconst sender = email.sender_name || email.sender_address;\nconst subject = email.subject || \"(제목 없음)\";\nconst body = email.body_text || \"\";\n\n// 3가지 톤에 대한 프롬프트 생성\nconst basePrompt = `다음 이메일에 대한 답변을 작성해주세요:\n\n보낸 사람: ${sender}\n제목: ${subject}\n내용:\n${body.substring(0, 1000)}\n\n`;\n\nreturn [\n  {\n    json: {\n      tone_type: \"formal\",\n      prompt: basePrompt + \"격식 있고 전문적인 톤으로 답변을 작성해주세요. 존댓말을 사용하고 정중한 표현을 사용하세요.\",\n      email_id: email.id,\n      original_subject: subject\n    }\n  },\n  {\n    json: {\n      tone_type: \"casual\",\n      prompt: basePrompt + \"친근하고 편안한 톤으로 답변을 작성해주세요. 부담스럽지 않으면서도 예의 바른 표현을 사용하세요.\",\n      email_id: email.id,\n      original_subject: subject\n    }\n  },\n  {\n    json: {\n      tone_type: \"brief\",\n      prompt: basePrompt + \"간결하고 핵심적인 톤으로 답변을 작성해주세요. 요점만 명확하게 전달하세요.\",\n      email_id: email.id,\n      original_subject: subject\n    }\n  }\n];"
+      },
+      "id": "code-1",
+      "name": "Code - 3가지 톤 프롬프트 생성",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "model": "gemini-2.0-flash-exp",
+        "prompt": "={{ $json.prompt }}",
+        "options": {
+          "temperature": 0.7,
+          "maxOutputTokens": 1024
+        }
+      },
+      "id": "gemini-1",
+      "name": "Google Gemini - 답변 생성",
+      "type": "n8n-nodes-base.googleGemini",
+      "typeVersion": 1,
+      "position": [1050, 300],
+      "credentials": {
+        "googleGeminiApi": {
+          "id": "2",
+          "name": "Google Gemini account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const items = $input.all();\n\nif (!items || items.length === 0) {\n  return [{\n    json: {\n      success: false,\n      message: \"답변 생성 실패\"\n    }\n  }];\n}\n\n// 3가지 톤의 답변을 객체로 결합\nconst reply_drafts = {};\nlet email_id = null;\nlet original_subject = null;\n\nfor (const item of items) {\n  const tone_type = item.json.tone_type;\n  const reply_text = item.json.text || \"\";\n  \n  if (!email_id) {\n    email_id = item.json.email_id;\n    original_subject = item.json.original_subject;\n  }\n  \n  let tone_name = \"격식체\";\n  if (tone_type === \"casual\") tone_name = \"친근함\";\n  if (tone_type === \"brief\") tone_name = \"간결함\";\n  \n  reply_drafts[tone_type] = {\n    tone: tone_name,\n    reply_text: reply_text\n  };\n}\n\nreturn [{\n  json: {\n    success: true,\n    email_id: email_id,\n    original_subject: original_subject,\n    reply_drafts: reply_drafts,\n    preferred_tone: \"formal\"\n  }\n}];"
+      },
+      "id": "code-2",
+      "name": "Code - 답변 결합",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO reply_suggestions (email_id, tone, reply_text)\nVALUES\n  ({{ $json.email_id }}, 'formal', '{{ $json.reply_drafts.formal.reply_text }}'),\n  ({{ $json.email_id }}, 'casual', '{{ $json.reply_drafts.casual.reply_text }}'),\n  ({{ $json.email_id }}, 'brief', '{{ $json.reply_drafts.brief.reply_text }}');\n",
+        "options": {}
+      },
+      "id": "postgres-2",
+      "name": "PostgreSQL - 답변 저장",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $('Code - 답변 결합').item.json }}",
+        "options": {}
+      },
+      "id": "respond-1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"message\": \"이메일을 찾을 수 없습니다.\",\n  \"email_id\": {{ $('Webhook').item.json.body.email_id }}\n}",
+        "options": {}
+      },
+      "id": "respond-2",
+      "name": "Respond - 이메일 없음",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [850, 500]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL - 이메일 조회",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL - 이메일 조회": {
+      "main": [
+        [
+          {
+            "node": "IF - 이메일 존재 여부",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - 이메일 존재 여부": {
+      "main": [
+        [
+          {
+            "node": "Code - 3가지 톤 프롬프트 생성",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - 이메일 없음",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - 3가지 톤 프롬프트 생성": {
+      "main": [
+        [
+          {
+            "node": "Google Gemini - 답변 생성",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini - 답변 생성": {
+      "main": [
+        [
+          {
+            "node": "Code - 답변 결합",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - 답변 결합": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL - 답변 저장",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL - 답변 저장": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1",
+  "id": "workflow-5",
+  "meta": {
+    "instanceId": "local"
+  },
+  "tags": []
+}

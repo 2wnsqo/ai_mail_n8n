@@ -1,0 +1,1082 @@
+{
+  "name": "naver_mail",
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "email",
+        "mailboxPath": {
+          "__rl": true,
+          "value": "INBOX",
+          "mode": "list",
+          "cachedResultName": "INBOX"
+        },
+        "emailDateRange": {
+          "since": "={{ $now.startOf('day').toFormat('dd-MMM-yyyy') }}"
+        },
+        "emailFlags": {},
+        "emailSearchFilters": {},
+        "includeParts": [
+          "textContent",
+          "htmlContent",
+          "attachmentsInfo",
+          "flags",
+          "size",
+          "bodyStructure",
+          "headers"
+        ]
+      },
+      "type": "n8n-nodes-imap.imap",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        0
+      ],
+      "id": "f4905143-d114-4e52-95cc-f3bccd3a6b24",
+      "name": "GetEmailsList email",
+      "credentials": {
+        "imapApi": {
+          "id": "lf01V5uy1WF9XT7R",
+          "name": "IMAP Credentials account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// IMAP에서 직접 받은 원본 이메일 데이터 처리\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n    return [{ json: { combinedText: \"오늘 수신된 이메일이 없습니다.\" } }];\n}\n\nlet fullEmailContent = \"다음은 오늘 수신된 이메일 전체 내용입니다. 각 이메일의 핵심 내용을 명확하게 한국어로 요약해 주세요:\\n\\n\";\n\nfor (const item of items) {\n    const data = item.json;\n    \n    // 데이터 유효성 검사\n    if (!data || !data.envelope) {\n        continue;\n    }\n    \n    // 본문 정리 (경로 1과 동일한 로직)\n    const body = data.htmlContent || data.textContent || \"메일 본문 없음\";\n    let cleanBody = body;\n    \n    if (body && body !== \"메일 본문 없음\" && data.htmlContent) {\n        cleanBody = cleanBody.replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi, '');\n        cleanBody = cleanBody.replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '');\n        cleanBody = cleanBody.replace(/<[^>]*>?/gm, ' ');\n        cleanBody = cleanBody.replace(/\\s+/g, ' ').trim();\n    }\n    \n    if (!cleanBody || cleanBody.length < 5) {\n        cleanBody = \"(본문 내용이 없거나 이미지 위주의 메일일 수 있습니다)\";\n    }\n    \n    // 발신자 정보\n    const senderName = data.envelope.from?.[0]?.name || '';\n    const senderAddress = data.envelope.from?.[0]?.address || 'Unknown';\n    const sender = senderName || senderAddress;\n    \n    fullEmailContent += `=====================================\\n`;\n    fullEmailContent += `보낸 사람: ${sender}\\n`;\n    fullEmailContent += `제목: ${data.envelope.subject || 'No Subject'}\\n`;\n    fullEmailContent += `-------------------------------------\\n`;\n    fullEmailContent += `${cleanBody}\\n\\n`;\n}\n\n// Gemini로 전달할 데이터 반환\nreturn [{ json: { combinedText: fullEmailContent } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        -16
+      ],
+      "id": "a2ece1d4-03eb-43ba-a4b3-033712814683",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.combinedText }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        -16
+      ],
+      "id": "033be1a6-1727-4011-a9e9-c8e72605553f",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "8p9arjKZfji38AJR",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f09b1c3e-0b17-4604-bc1c-8f778332e6a5",
+              "name": "summary_text",
+              "value": "={{ $json.content.parts[0].text }}",
+              "type": "string"
+            },
+            {
+              "id": "80dec5e9-c59a-4d37-9215-e4b615f166b9",
+              "name": "summary_date",
+              "value": "={{ $now.toFormat('yyyy-MM-dd') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1328,
+        -16
+      ],
+      "id": "5a5c0e61-93e7-4876-b7a3-e4e3a1933544",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        0
+      ],
+      "id": "634f8f53-cac0-4345-8b5a-b8330b78621c",
+      "name": "Webhook",
+      "webhookId": "64c20f57-35bd-4601-8a21-a6d8569b4315"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        208,
+        96
+      ],
+      "id": "c56a9094-70a1-439d-83a5-cc3afa865e6b",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop Over Items 내부 - 단일 아이템 처리용\n\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n    return [];\n}\n\nconst item = items[0];\nconst data = item.json;\n\nif (!data || !data.envelope) {\n    return [];\n}\n\n// 본문 정리\nconst body = data.htmlContent || data.textContent || \"메일 본문 없음\";\nlet cleanBody = body;\n\nif (body && body !== \"메일 본문 없음\" && data.htmlContent) {\n    cleanBody = cleanBody.replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi, '');\n    cleanBody = cleanBody.replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '');\n    cleanBody = cleanBody.replace(/<[^>]*>?/gm, ' ');\n    cleanBody = cleanBody.replace(/\\s+/g, ' ').trim();\n}\n\nif (!cleanBody || cleanBody.length < 5) {\n    cleanBody = \"(본문 내용이 없거나 이미지 위주의 메일일 수 있습니다)\";\n}\n\n// PostgreSQL Insert 노드가 기대하는 형식으로 반환\nreturn [{\n    json: {\n        received_at: data.envelope.date || new Date().toISOString(),\n        sender_name: data.envelope.from?.[0]?.name || '',\n        sender_address: data.envelope.from?.[0]?.address || 'Unknown',\n        subject: data.envelope.subject || 'No Subject',\n        body_text: cleanBody,\n        original_uid: data.uid || `${Date.now()}_${Math.random()}`,\n        is_replied_to: false\n    }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        112
+      ],
+      "id": "9b134763-d16c-4d62-a67b-c675c0bd080c",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "email",
+          "mode": "list",
+          "cachedResultName": "email"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "is_replied_to": "={{ $json.is_replied_to }}",
+            "received_at": "={{ $json.received_at }}",
+            "sender_name": "={{ $json.sender_name }}",
+            "sender_address": "={{ $json.sender_address }}",
+            "subject": "={{ $json.subject }}",
+            "body_text": "={{ $json.body_text }}",
+            "original_uid": "={{ $json.original_uid }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sender_name",
+              "displayName": "sender_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sender_address",
+              "displayName": "sender_address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "body_text",
+              "displayName": "body_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "original_uid",
+              "displayName": "original_uid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "is_replied_to",
+              "displayName": "is_replied_to",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "skipOnConflict": true
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        608,
+        112
+      ],
+      "id": "85ba2561-56b0-43ec-95f9-f5e9d2e46339",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "3JZPfpAeCZJnhNqq",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "daily_summaries",
+          "mode": "list",
+          "cachedResultName": "daily_summaries"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "summary_date": "={{ $json.summary_date }}",
+            "summary_content": "={{ $json.summary_text }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "summary_date",
+              "displayName": "summary_date",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "summary_content",
+              "displayName": "summary_content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "skipOnConflict": true
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1552,
+        0
+      ],
+      "id": "d78ffebf-7cb2-432e-b880-c2fcf77dca05",
+      "name": "Insert rows in a table1",
+      "credentials": {
+        "postgres": {
+          "id": "3JZPfpAeCZJnhNqq",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "send-reply",
+        "responseMode": "lastNode",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -272,
+        320
+      ],
+      "id": "4f317b5d-68f4-40fc-a91a-fb2b57eacf1e",
+      "name": "Webhook1",
+      "webhookId": "6e516133-cbbc-4c3f-8247-65fe678c8758"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Webhook에서 받은 데이터 검증 및 정리\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n    throw new Error(\"데이터가 없습니다.\");\n}\n\nconst data = items[0].json.body || items[0].json;\n\n// 필수 필드 확인\nif (!data.to_email) {\n    throw new Error(\"수신자 이메일(to_email)이 없습니다.\");\n}\n\nif (!data.subject) {\n    throw new Error(\"제목(subject)이 없습니다.\");\n}\n\nif (!data.reply_body) {\n    throw new Error(\"답변 내용(reply_body)이 없습니다.\");\n}\n\n// 이메일 형식 검증\nconst emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\nif (!emailRegex.test(data.to_email)) {\n    throw new Error(\"잘못된 이메일 형식입니다.\");\n}\n\n// 환경변수에서 발신자 정보 가져오기\nconst senderName = $env.MY_NAVER_NAME_ENV || '이준배';\nconst senderEmail = $env.MY_NAVER_EMAIL || '2wnsqo@naver.com';\n\n// 정리된 데이터 반환\nreturn [{\n    json: {\n        to_email: data.to_email,\n        to_name: data.to_name || data.to_email.split('@')[0],\n        subject: data.subject,\n        reply_body: data.reply_body,\n        original_email_id: data.original_email_id || null,\n        cc: data.cc || [],\n        bcc: data.bcc || [],\n        sent_at: new Date().toISOString(),\n        // 발신자 정보 추가\n        sender_name: senderName,\n        sender_email: senderEmail\n    }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        320
+      ],
+      "id": "60b321ea-67aa-426f-b02c-13642a481684",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.sender_email }}",
+        "toEmail": "= {{ $json.to_email }}",
+        "subject": "={{ $json.subject }}",
+        "html": "=<html>\n<head>\n    <meta charset=\"UTF-8\">\n</head>\n<body style=\"font-family: 'Malgun Gothic', Arial, sans-serif; line-height: 1.6; color: #333;\">\n    <p>{{ $json.to_name }}님께,</p>\n    \n    <div style=\"white-space: pre-wrap; margin: 20px 0;\">{{ $json.reply_body }}</div>\n    \n    <br>\n    <hr style=\"border: none; border-top: 1px solid #ddd; margin: 20px 0;\">\n    \n    <p style=\"color: #666;\">\n        감사합니다.<br>\n        {{ $json.sender_name }} 드림\n    </p>\n</body>\n</html>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        144,
+        320
+      ],
+      "id": "388ce448-fdf0-4ba1-8439-2f498a290016",
+      "name": "Send email",
+      "webhookId": "f09c1bfb-c72d-4bcf-9a9d-123b922e012e",
+      "credentials": {
+        "smtp": {
+          "id": "UUShvgrN6T3wfgkd",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "summary",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -272,
+        496
+      ],
+      "id": "b3c19908-6d19-41c7-9f47-d580f24e10f3",
+      "name": "Webhook2",
+      "webhookId": "da10ded0-a88d-4848-aa49-688b4d223c49"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT subject, sender_name, sender_address, body_text, received_at FROM email WHERE DATE(received_at) = CURRENT_DATE ORDER BY received_at DESC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -64,
+        496
+      ],
+      "id": "09559942-a44f-4a24-bdbb-fd2a613387da",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "3JZPfpAeCZJnhNqq",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5c453a9e-5487-4bb8-9784-edadbb065dd1",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        144,
+        496
+      ],
+      "id": "0904cba4-988c-4287-9918-4b515abe0c67",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const emails = $input.all();\n\nif (!emails || emails.length === 0) {\n  return [{\n    json: {\n      success: false,\n      message: \"오늘 수신된 이메일이 없습니다.\",\n      email_count: 0\n    }\n  }];\n}\n\nlet combinedText = \"다음은 오늘 수신된 이메일 전체 내용입니다. 각 이메일의 핵심 내용을 명확하게 한국어로 요약해 주 세요:\\n\\n\";\n\nfor (const email of emails) {\n  const sender = email.json.sender_name || email.json.sender_address;\n  const subject = email.json.subject || \"(제목 없음)\";\n  const body = email.json.body_text || \"\";\n\n  combinedText += \"=====================================\\n\";\n  combinedText += `보낸 사람: ${sender}\\n`;\n  combinedText += `제목: ${subject}\\n`;\n  combinedText += \"-------------------------------------\\n\";\n  combinedText += `${body.substring(0, 500)}\\n\\n`;\n}\n\nreturn [{\n  json: {\n    prompt: combinedText,\n    email_count: emails.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        400
+      ],
+      "id": "ab642c03-804a-4b3e-a3e7-578b1e5e7f23",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "options": {
+          "maxOutputTokens": 2048,
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        560,
+        400
+      ],
+      "id": "87a44185-3f2b-43fe-818c-8fba02f50eb9",
+      "name": "Message a model1",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "8p9arjKZfji38AJR",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "  INSERT INTO daily_summaries (summary_date, summary_content, email_count)\n  VALUES (\n    CURRENT_DATE,\n    '{{ $json.content.parts[0].text }}',\n    {{ $('Code in JavaScript3').item.json.email_count }}\n  )\n  ON CONFLICT (summary_date)\n  DO UPDATE SET\n    summary_content = EXCLUDED.summary_content,\n    email_count = EXCLUDED.email_count,\n    updated_at = NOW();",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        912,
+        400
+      ],
+      "id": "9973d67d-7303-4ec0-83a0-50495a3c5e90",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "3JZPfpAeCZJnhNqq",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n    success: true,\n    message: \"일일 요약 생성 완료\",\n    email_count: $node[\"Code in JavaScript3\"].json.email_count,\n    summary: $node[\"Message a model1\"].json.content.parts[0].text,\n    summary_date: $now.format('yyyy-MM-dd')\n  } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1120,
+        400
+      ],
+      "id": "d4b1f124-dcae-4fee-a86e-2e4e70c3460f",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n    \"success\": false,\n    \"message\": \"오늘 수신된 이메일이 없습니다.\",\n    \"email_count\": 0\n  }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        352,
+        592
+      ],
+      "id": "e6160320-9a04-41d0-ae66-0ba1a4f4098a",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n    success: true,\n    message: \"메일 동기화 완료\",\n    new_emails: $input.first().json.total || 0,\n    timestamp: $now.toISO()\n  } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "f636b1b4-6e20-4d37-b053-49b1fbedc8bb",
+      "name": "Respond to Webhook2"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, subject, sender_name, sender_address, body_text, received_at\nFROM email\nWHERE id = {{ $json.body.email_id }};",
+        "options": {}
+      },
+      "id": "69589b48-73d6-4818-af96-5da5ab23de12",
+      "name": "PostgreSQL - 이메일 조회",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        848
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3JZPfpAeCZJnhNqq",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $input.all().length }}",
+              "operation": "larger"
+            }
+          ]
+        }
+      },
+      "id": "8b08fc99-389a-44d3-b460-8cbd15cd73e8",
+      "name": "IF - 이메일 존재 여부",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        112,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "  const email = $input.first().json;\n\n  if (!email) {\n    return [{\n      json: {\n        success: false,\n        message: \"이메일을 찾을 수 없습니다.\"\n      }\n    }];\n  }\n\n  const sender = email.sender_name || email.sender_address;\n  const subject = email.subject || \"(제목 없음)\";\n  const body = email.body_text || \"\";\n\n  // 3가지 톤에 대한 프롬프트 생성\n  const basePrompt = `다음 이메일에 대한 답변을 작성해주세요:\n\n  보낸 사람: ${sender}\n  제목: ${subject}\n  내용:\n  ${body.substring(0, 1000)}\n\n  `;\n\n  return [\n    {\n      json: {\n        tone_type: \"formal\",\n        prompt: basePrompt + \"격식 있고 전문적인 톤으로 답변을 작성해주세요. 존댓말을 사용하고 정중한 표현을 사용하세요.\",\n        email_id: email.id,\n        original_subject: subject\n      }\n    },\n    {\n      json: {\n        tone_type: \"casual\",\n        prompt: basePrompt + \"친근하고 편안한 톤으로 답변을 작성해주세요. 부담스럽지 않으면서도 예의 바른 표현을  사용하세요.\",\n        email_id: email.id,\n        original_subject: subject\n      }\n    },\n    {\n      json: {\n        tone_type: \"brief\",\n        prompt: basePrompt + \"간결하고 핵심적인 톤으로 답변을 작성해주세요. 요점만 명확하게 전달하세요.\",\n        email_id: email.id,\n        original_subject: subject\n      }\n    }\n  ];"
+      },
+      "id": "1c80e2b2-4898-494f-a7cd-0d82d6071dc8",
+      "name": "Code - 3가지 톤 프롬프트 생성",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "  // Gemini 응답 (현재 노드 입력)\n  const geminiItems = $input.all();\n  // 3가지 톤 프롬프트 노드의 원본 데이터\n  const promptItems = $('Code - 3가지 톤 프롬프트 생성').all();\n\n  if (!geminiItems || geminiItems.length === 0) {\n    return [{\n      json: {\n        success: false,\n        message: \"답변 생성 실패\"\n      }\n    }];\n  }\n\n  // 3가지 톤의 답변을 객체로 결합\n  const reply_drafts = {};\n  let email_id = null;\n  let original_subject = null;\n\n  for (let i = 0; i < geminiItems.length; i++) {\n    const geminiItem = geminiItems[i];\n    const promptItem = promptItems[i];\n\n    const tone_type = promptItem.json.tone_type;\n    // Gemini 응답 구조: content.parts[0].text\n    const reply_text = geminiItem.json.content?.parts?.[0]?.text || geminiItem.json.text || \"\";\n\n    if (!email_id) {\n      email_id = promptItem.json.email_id;\n      original_subject = promptItem.json.original_subject;\n    }\n\n    let tone_name = \"격식체\";\n    if (tone_type === \"casual\") tone_name = \"친근함\";\n    if (tone_type === \"brief\") tone_name = \"간결함\";\n\n    reply_drafts[tone_type] = {\n      tone: tone_name,\n      reply_text: reply_text\n    };\n  }\n\n  return [{\n    json: {\n      success: true,\n      email_id: email_id,\n      original_subject: original_subject,\n      reply_drafts: reply_drafts,\n      preferred_tone: \"formal\"\n    }\n  }];"
+      },
+      "id": "b7e194ad-e550-4b18-82f6-4d59cfe91da3",
+      "name": "Code - 답변 결합",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO reply_drafts (email_id, tone, reply_text, status)\nVALUES\n  ({{ $json.email_id }}, 'formal', '{{ $json.reply_drafts.formal.reply_text }}', 'generated'),\n  ({{ $json.email_id }}, 'casual', '{{ $json.reply_drafts.casual.reply_text }}', 'generated'),\n  ({{ $json.email_id }}, 'brief', '{{ $json.reply_drafts.brief.reply_text }}', 'generated')\nON CONFLICT (email_id, tone)\nDO UPDATE SET\n  reply_text = EXCLUDED.reply_text,\n  status = EXCLUDED.status,\n  updated_at = NOW();\n",
+        "options": {}
+      },
+      "id": "ff2bd99a-f0b7-46c3-9cd6-b89cb116b9cb",
+      "name": "PostgreSQL - 답변 저장",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        976,
+        736
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3JZPfpAeCZJnhNqq",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"message\": \"이메일을 찾을 수 없습니다.\",\n  \"email_id\": {{ $('Webhook3').item.json.body.email_id }}\n}",
+        "options": {}
+      },
+      "id": "b2a5ef3d-2910-49de-82fa-568014c64428",
+      "name": "Respond - 이메일 없음",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        304,
+        944
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-reply",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "9704152b-eaab-417d-b91d-254f15b7f2c0",
+      "name": "Webhook3",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -304,
+        848
+      ],
+      "webhookId": "5d4163fc-345b-4822-a717-888dd186746a"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $('Code - 답변 결합').item.json }}",
+        "options": {}
+      },
+      "id": "43165fc6-f063-494e-90fb-c677882a208d",
+      "name": "Respond to Webhook3",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "options": {
+          "maxOutputTokens": 1024,
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        512,
+        736
+      ],
+      "id": "e266b71e-2e9e-4f1a-a7ae-b202fca055de",
+      "name": "Message a model2",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "executeOnce": false,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "8p9arjKZfji38AJR",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "GetEmailsList email": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "GetEmailsList email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook2": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Message a model1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL - 이메일 조회": {
+      "main": [
+        [
+          {
+            "node": "IF - 이메일 존재 여부",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - 이메일 존재 여부": {
+      "main": [
+        [
+          {
+            "node": "Code - 3가지 톤 프롬프트 생성",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - 이메일 없음",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - 답변 결합": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL - 답변 저장",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL - 답변 저장": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook3": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL - 이메일 조회",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - 3가지 톤 프롬프트 생성": {
+      "main": [
+        [
+          {
+            "node": "Message a model2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model2": {
+      "main": [
+        [
+          {
+            "node": "Code - 답변 결합",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "608352c4-0c97-4b35-a6db-fb86ec02bf29",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1661bbeb17eecfba99372bdf5cf01e05c95a2fff4bb9ab8d61705ac8732eab2e"
+  },
+  "id": "lldH4KTjMtO9IswV",
+  "tags": []
+}

@@ -1,0 +1,118 @@
+# ========================================
+# Environment Variables (CRITICAL - 절대 커밋 금지!)
+# ========================================
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ========================================
+# Python
+# ========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+my_n8n                     # Local Python virtual environment (모든 형식)
+my_n8n/
+my_n8n/*
+backend/venv/
+backend/.venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ========================================
+# Node.js / React
+# ========================================
+node_modules/
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# ========================================
+# Docker & Volumes (민감한 데이터 포함)
+# ========================================
+*.log
+docker-compose.override.yml
+postgres_data/             # PostgreSQL volume data
+n8n_data/                 # n8n volume data (credentials 포함!)
+
+# ========================================
+# n8n (민감한 정보 포함)
+# ========================================
+n8n_share/                # n8n shared directory
+*.n8n                     # n8n workflow backups
+
+# ========================================
+# IDE & Editors
+# ========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.claude                   # Claude Code settings (모든 형식)
+.claude/
+.claude/*
+
+# ========================================
+# Operating System
+# ========================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ========================================
+# Database Files
+# ========================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# ========================================
+# Logs
+# ========================================
+logs/
+*.log
+*.log.*
+
+# ========================================
+# Temporary & Cache Files
+# ========================================
+*.tmp
+*.temp
+*.cache
+.cache/
+tmp/
+temp/
+
+# ========================================
+# Backup Files
+# ========================================
+*.bak
+*.backup
+*~
+\#*\#
+
+# ========================================
+# Test Coverage
+# ========================================
+coverage/
+.nyc_output/

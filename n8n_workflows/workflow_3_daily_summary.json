@@ -1,0 +1,210 @@
+{
+  "name": "워크플로우 #3: 일일 요약 생성",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "summary",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT subject, sender_name, sender_address, body_text, received_at\nFROM email\nWHERE DATE(received_at) = CURRENT_DATE\nORDER BY received_at DESC;",
+        "options": {}
+      },
+      "id": "postgres-1",
+      "name": "PostgreSQL - 오늘 이메일 조회",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.rowCount }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "IF - 이메일 존재 여부",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const emails = $input.all();\n\nif (!emails || emails.length === 0) {\n  return [{\n    json: {\n      success: false,\n      message: \"오늘 수신된 이메일이 없습니다.\",\n      email_count: 0\n    }\n  }];\n}\n\nlet combinedText = \"다음은 오늘 수신된 이메일 전체 내용입니다. 각 이메일의 핵심 내용을 명확하게 한국어로 요약해 주세요:\\n\\n\";\n\nfor (const email of emails) {\n  const sender = email.json.sender_name || email.json.sender_address;\n  const subject = email.json.subject || \"(제목 없음)\";\n  const body = email.json.body_text || \"\";\n\n  combinedText += \"=====================================\\n\";\n  combinedText += `보낸 사람: ${sender}\\n`;\n  combinedText += `제목: ${subject}\\n`;\n  combinedText += \"-------------------------------------\\n\";\n  combinedText += `${body.substring(0, 500)}\\n\\n`;\n}\n\nreturn [{\n  json: {\n    prompt: combinedText,\n    email_count: emails.length\n  }\n}];"
+      },
+      "id": "code-1",
+      "name": "Code - 텍스트 결합",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "model": "gemini-2.0-flash-exp",
+        "prompt": "={{ $json.prompt }}",
+        "options": {
+          "temperature": 0.7,
+          "maxOutputTokens": 2048
+        }
+      },
+      "id": "gemini-1",
+      "name": "Google Gemini - 요약 생성",
+      "type": "n8n-nodes-base.googleGemini",
+      "typeVersion": 1,
+      "position": [1050, 200],
+      "credentials": {
+        "googleGeminiApi": {
+          "id": "2",
+          "name": "Google Gemini account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO daily_summaries (summary_date, summary_content, email_count)\nVALUES (\n  CURRENT_DATE,\n  '{{ $json.text }}',\n  {{ $('Code - 텍스트 결합').item.json.email_count }}\n)\nON CONFLICT (summary_date)\nDO UPDATE SET\n  summary_content = EXCLUDED.summary_content,\n  email_count = EXCLUDED.email_count,\n  updated_at = NOW();",
+        "options": {}
+      },
+      "id": "postgres-2",
+      "name": "PostgreSQL - 요약 저장",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1250, 200],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"일일 요약 생성 완료\",\n  \"email_count\": {{ $('Code - 텍스트 결합').item.json.email_count }},\n  \"summary\": \"{{ $json.text }}\",\n  \"summary_date\": \"{{ $now.format('YYYY-MM-DD') }}\"\n}",
+        "options": {}
+      },
+      "id": "respond-1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"message\": \"오늘 수신된 이메일이 없습니다.\",\n  \"email_count\": 0\n}",
+        "options": {}
+      },
+      "id": "respond-2",
+      "name": "Respond - 이메일 없음",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [850, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL - 오늘 이메일 조회",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL - 오늘 이메일 조회": {
+      "main": [
+        [
+          {
+            "node": "IF - 이메일 존재 여부",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - 이메일 존재 여부": {
+      "main": [
+        [
+          {
+            "node": "Code - 텍스트 결합",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - 이메일 없음",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - 텍스트 결합": {
+      "main": [
+        [
+          {
+            "node": "Google Gemini - 요약 생성",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini - 요약 생성": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL - 요약 저장",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL - 요약 저장": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1",
+  "id": "workflow-3",
+  "meta": {
+    "instanceId": "local"
+  },
+  "tags": []
+}

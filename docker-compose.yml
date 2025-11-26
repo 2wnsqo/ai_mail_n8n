@@ -1,0 +1,112 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: mail_postgres
+    environment:
+      POSTGRES_DB: ${MY_POSTGRES_DB}
+      POSTGRES_USER: ${MY_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${MY_POSTGRES_PASSWORD}
+    ports:
+      - "${MY_POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - mail_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MY_POSTGRES_USER} -d ${MY_POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # n8n Workflow Automation
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: mail_n8n
+    ports:
+      - "5678:5678"
+    environment:
+      # n8n 기본 설정
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASS}
+      - N8N_HOST=localhost
+      - WEBHOOK_TUNNEL_URL=http://localhost:5678/
+      - N8N_PAYLOAD_MAX_SIZE=50mb
+      - GENERIC_TIMEZONE=Asia/Seoul
+      - N8N_CUSTOM_EXTENSIONS=n8n-nodes-imap
+
+      # 환경변수 주입
+      - MY_NAVER_NAME_ENV=${MY_NAVER_NAME}
+      - MY_NAVER_EMAIL_ENV=${MY_NAVER_EMAIL}
+      - MY_NAVER_PASSWORD_ENV=${MY_NAVER_APP_PASSWORD}
+      - MY_GEMINI_KEY_ENV=${MY_GEMINI_API_KEY}
+
+      # PostgreSQL 변수
+      - MY_POSTGRES_HOST_ENV=postgres
+      - MY_POSTGRES_USER_ENV=${MY_POSTGRES_USER}
+      - MY_POSTGRES_PASSWORD_ENV=${MY_POSTGRES_PASSWORD}
+      - MY_POSTGRES_DB_ENV=${MY_POSTGRES_DB}
+      - MY_POSTGRES_PORT_ENV=${MY_POSTGRES_PORT}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - "C:/Users/2wnsq/Desktop/n8n_share:/data"
+    networks:
+      - mail_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Backend API (FastAPI + LangGraph)
+  backend:
+    build: ./backend
+    container_name: mail_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - MY_POSTGRES_HOST=postgres
+      - MY_POSTGRES_DB=${MY_POSTGRES_DB}
+      - MY_POSTGRES_USER=${MY_POSTGRES_USER}
+      - MY_POSTGRES_PASSWORD=${MY_POSTGRES_PASSWORD}
+      - MY_POSTGRES_PORT=5432
+      - MY_GEMINI_API_KEY=${MY_GEMINI_API_KEY}
+      - MY_NAVER_EMAIL=${MY_NAVER_EMAIL}
+      - MY_NAVER_NAME=${MY_NAVER_NAME}
+    volumes:
+      - ./backend:/app
+    networks:
+      - mail_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Frontend (React)
+  frontend:
+    build: ./frontend
+    container_name: mail_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - mail_network
+    depends_on:
+      - backend
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+networks:
+  mail_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  n8n_data:
