@@ -148,7 +148,7 @@ async def get_unanalyzed_emails(limit: int = 10):
 @app.post("/analyze/{email_id}")
 async def analyze_email(email_id: int):
     """
-    이메일 분석 (Gemini 직접 호출)
+    이메일 분석 (LangGraph → n8n → Gemini)
 
     - 이메일 유형 분류 (채용/마케팅/공지/개인/기타)
     - 중요도 점수 (0-10)
@@ -156,180 +156,49 @@ async def analyze_email(email_id: int):
     - 감정 분석
     """
     try:
-        import google.generativeai as genai
-        import json
-
         # 이메일 존재 여부 확인
         email = db.get_email_by_id(email_id)
         if not email:
             raise HTTPException(status_code=404, detail="Email not found")
 
-        # Gemini 설정
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        # LangGraph Supervisor를 통해 분석 (n8n → Gemini 호출)
+        result = email_processor.analyze_single_email(email_id)
 
-        # 프롬프트 생성
-        prompt = f"""다음 이메일을 분석해주세요:
+        if result.get("success") is False:
+            raise HTTPException(
+                status_code=500,
+                detail=result.get("error", "분석 실패")
+            )
 
-제목: {email['subject']}
-발신자: {email['sender_name']} <{email['sender_address']}>
-본문:
-{email['body_text']}
+        return result
 
-다음 JSON 형식으로 분석 결과를 제공해주세요:
-{{
-  "email_type": "채용|마케팅|공지|개인|기타 중 하나",
-  "importance_score": 0-10 사이의 숫자,
-  "needs_reply": true 또는 false,
-  "sentiment": "positive|neutral|negative 중 하나",
-  "key_points": ["핵심 내용 1", "핵심 내용 2"]
-}}
-
-JSON만 출력하세요."""
-
-        # Gemini 호출
-        response = model.generate_content(prompt)
-        response_text = response.text.strip()
-
-        # JSON 파싱
-        if response_text.startswith("```json"):
-            response_text = response_text[7:-3].strip()
-        elif response_text.startswith("```"):
-            response_text = response_text[3:-3].strip()
-
-        analysis = json.loads(response_text)
-
-        # DB에 분석 결과 저장
-        conn = db.get_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            UPDATE email
-            SET email_type = %s,
-                importance_score = %s,
-                needs_reply = %s,
-                sentiment = %s,
-                ai_analysis = %s,
-                processing_status = 'analyzed',
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = %s
-        """, (
-            analysis.get('email_type'),
-            analysis.get('importance_score'),
-            analysis.get('needs_reply'),
-            analysis.get('sentiment'),
-            json.dumps({"key_points": analysis.get('key_points', [])}),
-            email_id
-        ))
-
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        return {
-            "success": True,
-            "email_id": email_id,
-            "analysis": analysis
-        }
-
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=500, detail=f"Gemini 응답 파싱 실패: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"분석 실패: {str(e)}")
+        logger.error(f"분석 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analyze-all")
 async def analyze_all_unanalyzed():
-    """미분석 이메일 전체 분석 (Gemini 직접 호출)"""
+    """미분석 이메일 전체 분석 (LangGraph → n8n → Gemini)"""
     try:
-        import google.generativeai as genai
-        import json
-
+        # 미분석 이메일 조회
         unanalyzed = db.get_unanalyzed_emails(limit=100)
-        results = []
+        email_ids = [email['id'] for email in unanalyzed]
 
-        # Gemini 설정
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        if not email_ids:
+            return {
+                "total": 0,
+                "results": []
+            }
 
-        for email in unanalyzed:
-            try:
-                # 프롬프트 생성
-                prompt = f"""다음 이메일을 분석해주세요:
+        # LangGraph Supervisor를 통해 분석 (n8n → Gemini 호출)
+        result = email_processor.analyze_multiple_emails(email_ids)
 
-제목: {email['subject']}
-발신자: {email['sender_name']} <{email['sender_address']}>
-본문:
-{email['body_text']}
+        return result
 
-다음 JSON 형식으로 분석 결과를 제공해주세요:
-{{
-  "email_type": "채용|마케팅|공지|개인|기타 중 하나",
-  "importance_score": 0-10 사이의 숫자,
-  "needs_reply": true 또는 false,
-  "sentiment": "positive|neutral|negative 중 하나",
-  "key_points": ["핵심 내용 1", "핵심 내용 2"]
-}}
-
-JSON만 출력하세요."""
-
-                # Gemini 호출
-                response = model.generate_content(prompt)
-                response_text = response.text.strip()
-
-                # JSON 파싱
-                if response_text.startswith("```json"):
-                    response_text = response_text[7:-3].strip()
-                elif response_text.startswith("```"):
-                    response_text = response_text[3:-3].strip()
-
-                analysis = json.loads(response_text)
-
-                # DB에 분석 결과 저장
-                conn = db.get_connection()
-                cur = conn.cursor()
-
-                cur.execute("""
-                    UPDATE email
-                    SET email_type = %s,
-                        importance_score = %s,
-                        needs_reply = %s,
-                        sentiment = %s,
-                        ai_analysis = %s,
-                        processing_status = 'analyzed',
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                """, (
-                    analysis.get('email_type'),
-                    analysis.get('importance_score'),
-                    analysis.get('needs_reply'),
-                    analysis.get('sentiment'),
-                    json.dumps({"key_points": analysis.get('key_points', [])}),
-                    email['id']
-                ))
-
-                conn.commit()
-                cur.close()
-                conn.close()
-
-                results.append({
-                    "email_id": email['id'],
-                    "success": True,
-                    "analysis": analysis
-                })
-            except Exception as e:
-                results.append({
-                    "email_id": email['id'],
-                    "success": False,
-                    "error": str(e)
-                })
-
-        return {
-            "total": len(unanalyzed),
-            "results": results
-        }
     except Exception as e:
+        logger.error(f"analyze-all 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ========== 답변 생성 API ==========

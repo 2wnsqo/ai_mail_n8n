@@ -181,5 +181,87 @@ class DatabaseService:
             conn.close()
             raise e
 
+    # ========== 테스트용 메서드 ==========
+
+    def insert_test_email(self, email_data: Dict[str, Any]) -> int:
+        """테스트 이메일 삽입 (평가용)"""
+        conn = self.get_connection()
+        cur = conn.cursor()
+
+        try:
+            cur.execute("""
+                INSERT INTO email
+                (id, subject, sender_name, sender_address, body_text, received_at, original_uid, is_replied_to)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE)
+                ON CONFLICT (id) DO UPDATE SET
+                    subject = EXCLUDED.subject,
+                    sender_name = EXCLUDED.sender_name,
+                    sender_address = EXCLUDED.sender_address,
+                    body_text = EXCLUDED.body_text,
+                    received_at = EXCLUDED.received_at
+                RETURNING id
+            """, (
+                email_data.get('id'),
+                email_data.get('subject'),
+                email_data.get('sender_name'),
+                email_data.get('sender_address'),
+                email_data.get('body_text'),
+                email_data.get('received_at', datetime.now()),
+                f"test_{email_data.get('id')}",  # original_uid
+            ))
+            result = cur.fetchone()
+            conn.commit()
+            cur.close()
+            conn.close()
+            return result['id']
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            raise e
+
+    def delete_test_emails(self, email_ids: List[int]) -> int:
+        """테스트 이메일 삭제 (평가용)"""
+        if not email_ids:
+            return 0
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+
+        try:
+            # 관련 reply_drafts 먼저 삭제
+            cur.execute("""
+                DELETE FROM reply_drafts
+                WHERE email_id = ANY(%s)
+            """, (email_ids,))
+
+            # 이메일 삭제
+            cur.execute("""
+                DELETE FROM email
+                WHERE id = ANY(%s)
+                RETURNING id
+            """, (email_ids,))
+            deleted = cur.fetchall()
+            conn.commit()
+            cur.close()
+            conn.close()
+            return len(deleted)
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            raise e
+
+    def get_max_email_id(self) -> int:
+        """현재 최대 이메일 ID 조회"""
+        conn = self.get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COALESCE(MAX(id), 0) as max_id FROM email")
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        return result['max_id']
+
+
 # 싱글톤 인스턴스
 db = DatabaseService()

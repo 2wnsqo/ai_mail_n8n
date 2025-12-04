@@ -1,0 +1,480 @@
+{
+  "version": "1.0",
+  "created_at": "2025-12-04T17:13:35.077970",
+  "description": "AI 메일 비서 성능 측정용 테스트 데이터셋",
+  "statistics": {
+    "total": 25,
+    "by_type": {
+      "채용": 5,
+      "마케팅": 5,
+      "공지": 5,
+      "개인": 5,
+      "기타": 5
+    }
+  },
+  "emails": [
+    {
+      "id": "synthetic_001",
+      "subject": "[ABC회사] 서류 전형 합격 및 면접 안내",
+      "sender_name": "ABC회사 인사팀",
+      "sender_address": "hr@abc-company.com",
+      "body_text": "안녕하세요, 홍길동님.\n\nABC회사 백엔드 개발자 채용에 지원해 주셔서 감사합니다.\n\n서류 전형 결과, 귀하께서 합격하셨음을 알려드립니다.\n다음 단계인 1차 면접 일정을 아래와 같이 안내드립니다.\n\n- 일시: 2024년 12월 10일 (화) 오후 2시\n- 장소: ABC회사 본사 3층 회의실\n- 준비물: 신분증, 포트폴리오\n\n참석 가능 여부를 12월 6일까지 회신 부탁드립니다.\n\n감사합니다.\nABC회사 인사팀 드림",
+      "received_at": "2024-12-04T09:00:00",
+      "ground_truth": {
+        "email_type": "채용",
+        "importance_score": 9,
+        "needs_reply": true,
+        "sentiment": "positive",
+        "key_points": [
+          "서류 합격",
+          "면접 일정 12/10",
+          "참석 여부 회신 필요"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_002",
+      "subject": "면접 결과 안내 - 불합격",
+      "sender_name": "XYZ테크 채용담당",
+      "sender_address": "recruit@xyztech.co.kr",
+      "body_text": "안녕하세요.\n\nXYZ테크 프론트엔드 개발자 채용에 지원해 주셔서 감사합니다.\n\n안타깝게도 이번 채용에서는 귀하의 합류가 어렵게 되었습니다.\n더 좋은 기회가 있으시길 바라며, 앞으로의 발전을 응원합니다.\n\n감사합니다.",
+      "received_at": "2024-12-04T10:00:00",
+      "ground_truth": {
+        "email_type": "채용",
+        "importance_score": 7,
+        "needs_reply": false,
+        "sentiment": "negative",
+        "key_points": [
+          "불합격 통보"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_003",
+      "subject": "코딩테스트 안내",
+      "sender_name": "스타트업A HR",
+      "sender_address": "hr@startup-a.io",
+      "body_text": "안녕하세요.\n\n스타트업A 개발자 채용 프로세스의 일환으로 코딩테스트를 안내드립니다.\n\n- 응시 기간: 12월 5일 ~ 12월 7일\n- 소요 시간: 약 2시간\n- 문제 수: 3문제 (알고리즘 2, SQL 1)\n- 링크: https://test.example.com/abc123\n\n기한 내 응시 부탁드립니다.\n\n감사합니다.",
+      "received_at": "2024-12-04T11:00:00",
+      "ground_truth": {
+        "email_type": "채용",
+        "importance_score": 8,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "코딩테스트 안내",
+          "기한 12/5~12/7",
+          "2시간 소요"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_004",
+      "subject": "연봉 협상 관련 문의",
+      "sender_name": "DEF기업 인사",
+      "sender_address": "hr@def-corp.com",
+      "body_text": "안녕하세요, 홍길동님.\n\n최종 면접 합격을 축하드립니다!\n\n처우 협의를 위해 아래 내용을 확인 부탁드립니다.\n- 희망 연봉\n- 입사 가능일\n- 현재 재직 여부\n\n회신 부탁드립니다.\n\n감사합니다.",
+      "received_at": "2024-12-04T14:00:00",
+      "ground_truth": {
+        "email_type": "채용",
+        "importance_score": 10,
+        "needs_reply": true,
+        "sentiment": "positive",
+        "key_points": [
+          "최종 합격",
+          "연봉 협상",
+          "입사일 문의"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_005",
+      "subject": "이력서 접수 확인",
+      "sender_name": "채용플랫폼",
+      "sender_address": "noreply@jobplatform.com",
+      "body_text": "이력서가 정상적으로 접수되었습니다.\n\n지원 정보:\n- 회사: GHI컴퍼니\n- 포지션: 데이터 엔지니어\n- 접수일: 2024년 12월 4일\n\n서류 검토 후 개별 연락드리겠습니다.\n\n감사합니다.",
+      "received_at": "2024-12-04T15:00:00",
+      "ground_truth": {
+        "email_type": "채용",
+        "importance_score": 5,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "이력서 접수 확인",
+          "서류 검토 예정"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_006",
+      "subject": "[50% 할인] 블랙프라이데이 특별 프로모션!",
+      "sender_name": "쇼핑몰A",
+      "sender_address": "marketing@shoppingmall.com",
+      "body_text": "🎉 블랙프라이데이 특별 할인!\n\n전 상품 최대 50% 할인!\n- 기간: 11월 24일 ~ 11월 27일\n- 쿠폰코드: BLACKFRI2024\n\n지금 바로 쇼핑하세요!\n\n수신거부: unsubscribe@shoppingmall.com",
+      "received_at": "2024-11-24T08:00:00",
+      "ground_truth": {
+        "email_type": "마케팅",
+        "importance_score": 2,
+        "needs_reply": false,
+        "sentiment": "positive",
+        "key_points": [
+          "50% 할인",
+          "블랙프라이데이",
+          "쿠폰코드"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_007",
+      "subject": "새로운 기능 출시 안내 - RunPod",
+      "sender_name": "RunPod Team",
+      "sender_address": "team@runpod.io",
+      "body_text": "RunPod의 새로운 기능을 소개합니다!\n\nLoad Balancer가 출시되었습니다.\n- 실시간 스트리밍 지원\n- 저지연 API 엔드포인트\n- vLLM 최적화\n\n자세한 내용은 문서를 확인하세요.\n\nUnsubscribe | Manage Preferences",
+      "received_at": "2024-12-01T10:00:00",
+      "ground_truth": {
+        "email_type": "마케팅",
+        "importance_score": 3,
+        "needs_reply": false,
+        "sentiment": "positive",
+        "key_points": [
+          "새 기능 출시",
+          "Load Balancer",
+          "기술 업데이트"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_008",
+      "subject": "무료 웨비나 초대 - AI 트렌드 2025",
+      "sender_name": "테크컨퍼런스",
+      "sender_address": "events@techconf.co.kr",
+      "body_text": "AI 트렌드 2025 웨비나에 초대합니다!\n\n일시: 12월 15일 오후 7시\n주제: 2025년 AI 산업 전망\n연사: 김AI 교수 (서울대)\n\n무료 등록: https://webinar.example.com\n\n수신거부",
+      "received_at": "2024-12-03T09:00:00",
+      "ground_truth": {
+        "email_type": "마케팅",
+        "importance_score": 4,
+        "needs_reply": false,
+        "sentiment": "positive",
+        "key_points": [
+          "무료 웨비나",
+          "AI 트렌드",
+          "12월 15일"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_009",
+      "subject": "구독 갱신 안내",
+      "sender_name": "SaaS서비스",
+      "sender_address": "billing@saas-service.com",
+      "body_text": "구독이 곧 만료됩니다.\n\n현재 플랜: Pro ($29/월)\n만료일: 2024년 12월 10일\n\n지금 갱신하시면 20% 할인!\n자동 갱신을 원하시면 결제 정보를 확인해주세요.\n\n문의: support@saas-service.com",
+      "received_at": "2024-12-03T11:00:00",
+      "ground_truth": {
+        "email_type": "마케팅",
+        "importance_score": 5,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "구독 만료 임박",
+          "갱신 할인",
+          "12월 10일 만료"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_010",
+      "subject": "뉴스레터 - 이번 주 테크 뉴스",
+      "sender_name": "테크뉴스레터",
+      "sender_address": "newsletter@technews.kr",
+      "body_text": "이번 주 테크 뉴스 Top 5\n\n1. OpenAI GPT-5 발표 임박\n2. 애플 M4 칩 성능 공개\n3. 테슬라 로보택시 시범 운행\n4. 구글 Gemini 2.0 업데이트\n5. 삼성 갤럭시 S25 유출\n\n자세히 보기: https://technews.kr/weekly",
+      "received_at": "2024-12-04T07:00:00",
+      "ground_truth": {
+        "email_type": "마케팅",
+        "importance_score": 2,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "주간 뉴스레터",
+          "테크 뉴스"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_011",
+      "subject": "서울시 당현천 개장 안내",
+      "sender_name": "서울시청",
+      "sender_address": "info@seoul.go.kr",
+      "body_text": "서울시 당현천 '당현마루·달빛브릿지' 개장 안내\n\n개장일: 2024년 12월 5일\n위치: 서대문구 당현천\n시설: 산책로, 전망대, 야간 조명\n\n많은 방문 부탁드립니다.\n\n서울특별시",
+      "received_at": "2024-12-04T08:00:00",
+      "ground_truth": {
+        "email_type": "공지",
+        "importance_score": 3,
+        "needs_reply": false,
+        "sentiment": "positive",
+        "key_points": [
+          "시설 개장",
+          "당현천",
+          "12월 5일"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_012",
+      "subject": "시스템 점검 안내 (12/7 02:00-06:00)",
+      "sender_name": "IT지원팀",
+      "sender_address": "it-support@company.com",
+      "body_text": "시스템 정기 점검 안내\n\n일시: 12월 7일(토) 02:00 ~ 06:00\n대상: 전사 시스템 (메일, ERP, 그룹웨어)\n영향: 해당 시간 서비스 이용 불가\n\n양해 부탁드립니다.\n\nIT지원팀",
+      "received_at": "2024-12-04T16:00:00",
+      "ground_truth": {
+        "email_type": "공지",
+        "importance_score": 6,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "시스템 점검",
+          "12/7 새벽",
+          "서비스 중단"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_013",
+      "subject": "개인정보 처리방침 변경 안내",
+      "sender_name": "서비스운영팀",
+      "sender_address": "privacy@service.com",
+      "body_text": "개인정보 처리방침 변경 안내\n\n시행일: 2024년 12월 15일\n\n주요 변경사항:\n1. 개인정보 보유기간 변경 (3년 → 5년)\n2. 제3자 제공 항목 추가\n3. 마케팅 동의 절차 간소화\n\n자세한 내용: https://service.com/privacy\n\n문의: privacy@service.com",
+      "received_at": "2024-12-01T10:00:00",
+      "ground_truth": {
+        "email_type": "공지",
+        "importance_score": 4,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "개인정보 방침 변경",
+          "12월 15일 시행"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_014",
+      "subject": "[긴급] 보안 업데이트 필수 적용 안내",
+      "sender_name": "보안팀",
+      "sender_address": "security@company.com",
+      "body_text": "긴급 보안 업데이트 안내\n\n중요한 보안 취약점이 발견되어 즉시 업데이트가 필요합니다.\n\n대상: 전 직원 PC\n방법: 제어판 > Windows Update 실행\n기한: 12월 5일까지\n\n미적용 시 네트워크 접속이 제한됩니다.\n\n보안팀",
+      "received_at": "2024-12-04T09:00:00",
+      "ground_truth": {
+        "email_type": "공지",
+        "importance_score": 8,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "긴급 보안 업데이트",
+          "12/5까지",
+          "필수 적용"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_015",
+      "subject": "연말 휴무 안내",
+      "sender_name": "총무팀",
+      "sender_address": "admin@company.com",
+      "body_text": "2024년 연말 휴무 안내\n\n휴무 기간: 12월 30일(월) ~ 1월 1일(수)\n업무 재개: 1월 2일(목)\n\n긴급 연락처: 010-1234-5678\n\n즐거운 연말연시 보내세요!\n\n총무팀",
+      "received_at": "2024-12-03T14:00:00",
+      "ground_truth": {
+        "email_type": "공지",
+        "importance_score": 5,
+        "needs_reply": false,
+        "sentiment": "positive",
+        "key_points": [
+          "연말 휴무",
+          "12/30~1/1",
+          "긴급 연락처"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_016",
+      "subject": "프로젝트 협업 요청",
+      "sender_name": "김개발",
+      "sender_address": "kim.dev@gmail.com",
+      "body_text": "안녕하세요, 홍길동님.\n\n오픈소스 프로젝트에서 활동하시는 것을 보고 연락드립니다.\n\n현재 진행 중인 AI 챗봇 프로젝트에 참여 의향이 있으신지 문의드립니다.\n- 기술 스택: Python, LangChain, FastAPI\n- 예상 기간: 3개월\n- 보상: 오픈소스 기여 + 소정의 사례비\n\n관심 있으시면 회신 부탁드립니다.\n\n감사합니다.\n김개발 드림",
+      "received_at": "2024-12-04T11:00:00",
+      "ground_truth": {
+        "email_type": "개인",
+        "importance_score": 7,
+        "needs_reply": true,
+        "sentiment": "positive",
+        "key_points": [
+          "프로젝트 협업 제안",
+          "AI 챗봇",
+          "회신 요청"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_017",
+      "subject": "Re: 지난주 미팅 후속",
+      "sender_name": "이매니저",
+      "sender_address": "lee.manager@partner.com",
+      "body_text": "안녕하세요.\n\n지난주 미팅에서 논의한 내용 정리해서 보내드립니다.\n\n1. API 연동 방식 확정\n2. 일정: 1월 중 MVP 완료\n3. 다음 미팅: 12월 12일\n\n첨부 파일 확인 부탁드립니다.\n의견 있으시면 말씀해주세요.\n\n감사합니다.",
+      "received_at": "2024-12-04T13:00:00",
+      "ground_truth": {
+        "email_type": "개인",
+        "importance_score": 7,
+        "needs_reply": true,
+        "sentiment": "neutral",
+        "key_points": [
+          "미팅 후속",
+          "일정 확인",
+          "의견 요청"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_018",
+      "subject": "생일 축하해요!",
+      "sender_name": "박친구",
+      "sender_address": "park.friend@naver.com",
+      "body_text": "생일 축하해~! 🎂🎉\n\n올해도 건강하고 행복한 한 해 보내!\n다음에 만나서 밥 한번 먹자ㅋㅋ\n\n선물은 나중에 줄게~",
+      "received_at": "2024-12-04T00:01:00",
+      "ground_truth": {
+        "email_type": "개인",
+        "importance_score": 4,
+        "needs_reply": true,
+        "sentiment": "positive",
+        "key_points": [
+          "생일 축하",
+          "친구"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_019",
+      "subject": "기술 질문 - LangGraph 관련",
+      "sender_name": "최주니어",
+      "sender_address": "choi.junior@company.com",
+      "body_text": "안녕하세요, 선배님.\n\nLangGraph 관련해서 질문이 있어서 메일 드립니다.\n\nStateGraph에서 conditional_edges를 사용할 때\n여러 조건을 처리하는 best practice가 궁금합니다.\n\n혹시 시간 되시면 간단히 조언 부탁드려도 될까요?\n\n감사합니다.\n최주니어 드림",
+      "received_at": "2024-12-04T15:00:00",
+      "ground_truth": {
+        "email_type": "개인",
+        "importance_score": 5,
+        "needs_reply": true,
+        "sentiment": "neutral",
+        "key_points": [
+          "기술 질문",
+          "LangGraph",
+          "조언 요청"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_020",
+      "subject": "이번 주 스터디 불참 안내",
+      "sender_name": "정스터디",
+      "sender_address": "jung.study@gmail.com",
+      "body_text": "안녕하세요.\n\n이번 주 토요일 스터디에 개인 사정으로 불참합니다.\n다음 주에는 꼭 참석하겠습니다.\n\n발표 자료는 미리 공유드릴게요.\n\n감사합니다.",
+      "received_at": "2024-12-04T17:00:00",
+      "ground_truth": {
+        "email_type": "개인",
+        "importance_score": 3,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "스터디 불참",
+          "자료 공유 예정"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_021",
+      "subject": "택배 배송 완료 안내",
+      "sender_name": "CJ대한통운",
+      "sender_address": "noreply@cjlogistics.com",
+      "body_text": "배송이 완료되었습니다.\n\n운송장번호: 1234567890\n배송완료: 2024-12-04 14:32\n수령인: 홍길동\n배송위치: 경비실\n\n감사합니다.",
+      "received_at": "2024-12-04T14:35:00",
+      "ground_truth": {
+        "email_type": "기타",
+        "importance_score": 3,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "배송 완료",
+          "경비실 수령"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_022",
+      "subject": "카드 사용 내역 알림",
+      "sender_name": "KB국민카드",
+      "sender_address": "card@kbcard.com",
+      "body_text": "KB국민카드 사용 알림\n\n일시: 2024-12-04 12:30\n가맹점: 스타벅스 강남점\n금액: 6,500원\n누적: 125,000원/500,000원\n\n이용해 주셔서 감사합니다.",
+      "received_at": "2024-12-04T12:31:00",
+      "ground_truth": {
+        "email_type": "기타",
+        "importance_score": 2,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "카드 사용 알림",
+          "6,500원"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_023",
+      "subject": "GitHub - New pull request",
+      "sender_name": "GitHub",
+      "sender_address": "noreply@github.com",
+      "body_text": "@contributor opened a new pull request in your-repo/project\n\n#42 Add feature: email classification\n\nFiles changed: 5\nCommits: 3\n\nView pull request: https://github.com/your-repo/project/pull/42",
+      "received_at": "2024-12-04T16:00:00",
+      "ground_truth": {
+        "email_type": "기타",
+        "importance_score": 6,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "GitHub PR",
+          "코드 리뷰 필요"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_024",
+      "subject": "비밀번호 변경 완료",
+      "sender_name": "네이버",
+      "sender_address": "noreply@naver.com",
+      "body_text": "비밀번호가 성공적으로 변경되었습니다.\n\n변경 일시: 2024-12-04 10:15\n변경 IP: 123.456.xxx.xxx\n\n본인이 변경하지 않았다면 즉시 고객센터로 연락주세요.\n고객센터: 1588-1234",
+      "received_at": "2024-12-04T10:15:00",
+      "ground_truth": {
+        "email_type": "기타",
+        "importance_score": 4,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "비밀번호 변경 완료",
+          "보안 알림"
+        ]
+      }
+    },
+    {
+      "id": "synthetic_025",
+      "subject": "Slack 알림 요약",
+      "sender_name": "Slack",
+      "sender_address": "notification@slack.com",
+      "body_text": "You have 15 unread messages\n\n#general (5 messages)\n#dev-team (8 messages)\n#random (2 messages)\n\nView in Slack: https://slack.com/messages",
+      "received_at": "2024-12-04T18:00:00",
+      "ground_truth": {
+        "email_type": "기타",
+        "importance_score": 3,
+        "needs_reply": false,
+        "sentiment": "neutral",
+        "key_points": [
+          "Slack 알림",
+          "15개 메시지"
+        ]
+      }
+    }
+  ]
+}

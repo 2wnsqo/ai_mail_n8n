@@ -1,0 +1,320 @@
+{
+  "version": "1.0",
+  "created_at": "2025-12-04T17:13:35.078979",
+  "description": "성능 평가용 정답 데이터",
+  "ground_truths": [
+    {
+      "id": "synthetic_001",
+      "subject": "[ABC회사] 서류 전형 합격 및 면접 안내",
+      "email_type": "채용",
+      "importance_score": 9,
+      "needs_reply": true,
+      "sentiment": "positive",
+      "key_points": [
+        "서류 합격",
+        "면접 일정 12/10",
+        "참석 여부 회신 필요"
+      ]
+    },
+    {
+      "id": "synthetic_002",
+      "subject": "면접 결과 안내 - 불합격",
+      "email_type": "채용",
+      "importance_score": 7,
+      "needs_reply": false,
+      "sentiment": "negative",
+      "key_points": [
+        "불합격 통보"
+      ]
+    },
+    {
+      "id": "synthetic_003",
+      "subject": "코딩테스트 안내",
+      "email_type": "채용",
+      "importance_score": 8,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "코딩테스트 안내",
+        "기한 12/5~12/7",
+        "2시간 소요"
+      ]
+    },
+    {
+      "id": "synthetic_004",
+      "subject": "연봉 협상 관련 문의",
+      "email_type": "채용",
+      "importance_score": 10,
+      "needs_reply": true,
+      "sentiment": "positive",
+      "key_points": [
+        "최종 합격",
+        "연봉 협상",
+        "입사일 문의"
+      ]
+    },
+    {
+      "id": "synthetic_005",
+      "subject": "이력서 접수 확인",
+      "email_type": "채용",
+      "importance_score": 5,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "이력서 접수 확인",
+        "서류 검토 예정"
+      ]
+    },
+    {
+      "id": "synthetic_006",
+      "subject": "[50% 할인] 블랙프라이데이 특별 프로모션!",
+      "email_type": "마케팅",
+      "importance_score": 2,
+      "needs_reply": false,
+      "sentiment": "positive",
+      "key_points": [
+        "50% 할인",
+        "블랙프라이데이",
+        "쿠폰코드"
+      ]
+    },
+    {
+      "id": "synthetic_007",
+      "subject": "새로운 기능 출시 안내 - RunPod",
+      "email_type": "마케팅",
+      "importance_score": 3,
+      "needs_reply": false,
+      "sentiment": "positive",
+      "key_points": [
+        "새 기능 출시",
+        "Load Balancer",
+        "기술 업데이트"
+      ]
+    },
+    {
+      "id": "synthetic_008",
+      "subject": "무료 웨비나 초대 - AI 트렌드 2025",
+      "email_type": "마케팅",
+      "importance_score": 4,
+      "needs_reply": false,
+      "sentiment": "positive",
+      "key_points": [
+        "무료 웨비나",
+        "AI 트렌드",
+        "12월 15일"
+      ]
+    },
+    {
+      "id": "synthetic_009",
+      "subject": "구독 갱신 안내",
+      "email_type": "마케팅",
+      "importance_score": 5,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "구독 만료 임박",
+        "갱신 할인",
+        "12월 10일 만료"
+      ]
+    },
+    {
+      "id": "synthetic_010",
+      "subject": "뉴스레터 - 이번 주 테크 뉴스",
+      "email_type": "마케팅",
+      "importance_score": 2,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "주간 뉴스레터",
+        "테크 뉴스"
+      ]
+    },
+    {
+      "id": "synthetic_011",
+      "subject": "서울시 당현천 개장 안내",
+      "email_type": "공지",
+      "importance_score": 3,
+      "needs_reply": false,
+      "sentiment": "positive",
+      "key_points": [
+        "시설 개장",
+        "당현천",
+        "12월 5일"
+      ]
+    },
+    {
+      "id": "synthetic_012",
+      "subject": "시스템 점검 안내 (12/7 02:00-06:00)",
+      "email_type": "공지",
+      "importance_score": 6,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "시스템 점검",
+        "12/7 새벽",
+        "서비스 중단"
+      ]
+    },
+    {
+      "id": "synthetic_013",
+      "subject": "개인정보 처리방침 변경 안내",
+      "email_type": "공지",
+      "importance_score": 4,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "개인정보 방침 변경",
+        "12월 15일 시행"
+      ]
+    },
+    {
+      "id": "synthetic_014",
+      "subject": "[긴급] 보안 업데이트 필수 적용 안내",
+      "email_type": "공지",
+      "importance_score": 8,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "긴급 보안 업데이트",
+        "12/5까지",
+        "필수 적용"
+      ]
+    },
+    {
+      "id": "synthetic_015",
+      "subject": "연말 휴무 안내",
+      "email_type": "공지",
+      "importance_score": 5,
+      "needs_reply": false,
+      "sentiment": "positive",
+      "key_points": [
+        "연말 휴무",
+        "12/30~1/1",
+        "긴급 연락처"
+      ]
+    },
+    {
+      "id": "synthetic_016",
+      "subject": "프로젝트 협업 요청",
+      "email_type": "개인",
+      "importance_score": 7,
+      "needs_reply": true,
+      "sentiment": "positive",
+      "key_points": [
+        "프로젝트 협업 제안",
+        "AI 챗봇",
+        "회신 요청"
+      ]
+    },
+    {
+      "id": "synthetic_017",
+      "subject": "Re: 지난주 미팅 후속",
+      "email_type": "개인",
+      "importance_score": 7,
+      "needs_reply": true,
+      "sentiment": "neutral",
+      "key_points": [
+        "미팅 후속",
+        "일정 확인",
+        "의견 요청"
+      ]
+    },
+    {
+      "id": "synthetic_018",
+      "subject": "생일 축하해요!",
+      "email_type": "개인",
+      "importance_score": 4,
+      "needs_reply": true,
+      "sentiment": "positive",
+      "key_points": [
+        "생일 축하",
+        "친구"
+      ]
+    },
+    {
+      "id": "synthetic_019",
+      "subject": "기술 질문 - LangGraph 관련",
+      "email_type": "개인",
+      "importance_score": 5,
+      "needs_reply": true,
+      "sentiment": "neutral",
+      "key_points": [
+        "기술 질문",
+        "LangGraph",
+        "조언 요청"
+      ]
+    },
+    {
+      "id": "synthetic_020",
+      "subject": "이번 주 스터디 불참 안내",
+      "email_type": "개인",
+      "importance_score": 3,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "스터디 불참",
+        "자료 공유 예정"
+      ]
+    },
+    {
+      "id": "synthetic_021",
+      "subject": "택배 배송 완료 안내",
+      "email_type": "기타",
+      "importance_score": 3,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "배송 완료",
+        "경비실 수령"
+      ]
+    },
+    {
+      "id": "synthetic_022",
+      "subject": "카드 사용 내역 알림",
+      "email_type": "기타",
+      "importance_score": 2,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "카드 사용 알림",
+        "6,500원"
+      ]
+    },
+    {
+      "id": "synthetic_023",
+      "subject": "GitHub - New pull request",
+      "email_type": "기타",
+      "importance_score": 6,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "GitHub PR",
+        "코드 리뷰 필요"
+      ]
+    },
+    {
+      "id": "synthetic_024",
+      "subject": "비밀번호 변경 완료",
+      "email_type": "기타",
+      "importance_score": 4,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "비밀번호 변경 완료",
+        "보안 알림"
+      ]
+    },
+    {
+      "id": "synthetic_025",
+      "subject": "Slack 알림 요약",
+      "email_type": "기타",
+      "importance_score": 3,
+      "needs_reply": false,
+      "sentiment": "neutral",
+      "key_points": [
+        "Slack 알림",
+        "15개 메시지"
+      ]
+    }
+  ]
+}

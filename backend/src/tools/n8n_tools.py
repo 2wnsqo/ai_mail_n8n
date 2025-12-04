@@ -226,12 +226,14 @@ class N8nToolWrapper:
             logger.error(f"[n8n] GenerateReplyAgent 실패: {e}")
             raise Exception(f"n8n 연결 실패: {str(e)}")
 
-    def analyze_email(self, email_id: int) -> Dict:
+    def analyze_email(self, email_id: int, email_data: Dict = None) -> Dict:
         """
         워크플로우 #5: 이메일 분석 (AnalyzeEmailAgent)
 
         Args:
             email_id: 분석할 이메일 ID
+            email_data: 이메일 데이터 (subject, sender_name, sender_address, body_text)
+                       None이면 DB에서 조회
 
         Returns:
             {
@@ -242,18 +244,31 @@ class N8nToolWrapper:
                     "importance_score": 8,
                     "needs_reply": true,
                     "sentiment": "positive",
-                    "key_points": [...],
-                    "recommended_action": "..."
+                    "key_points": [...]
                 }
             }
         """
-        url = f"{self.base_url}/webhook-test/analyze"
-        payload = {"email_id": email_id}
+        # email_data가 없으면 DB에서 조회
+        if email_data is None:
+            from ..services.db_service import db
+            email = db.get_email_by_id(email_id)
+            if not email:
+                raise Exception(f"Email {email_id} not found")
+            email_data = email
+
+        url = f"{self.base_url}/webhook/analyze"
+        payload = {
+            "email_id": email_id,
+            "subject": email_data.get('subject', ''),
+            "sender_name": email_data.get('sender_name', ''),
+            "sender_address": email_data.get('sender_address', ''),
+            "body_text": email_data.get('body_text', '')
+        }
 
         logger.info(f"[n8n] AnalyzeEmailAgent 호출: email_id={email_id}")
 
         try:
-            response = requests.post(url, json=payload, timeout=60)
+            response = requests.post(url, json=payload, timeout=30)
             response.raise_for_status()
 
             result = response.json()
@@ -263,7 +278,7 @@ class N8nToolWrapper:
 
         except requests.exceptions.Timeout:
             logger.error("[n8n] AnalyzeEmailAgent 타임아웃")
-            raise Exception("이메일 분석 시간 초과 (60초)")
+            raise Exception("이메일 분석 시간 초과 (30초)")
 
         except requests.exceptions.RequestException as e:
             logger.error(f"[n8n] AnalyzeEmailAgent 실패: {e}")

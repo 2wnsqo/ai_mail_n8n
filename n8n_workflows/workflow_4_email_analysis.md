@@ -163,6 +163,22 @@ return [{
 const geminiResponse = $input.first().json.text;
 const emailId = $('Code').item.json.email_id;
 
+// SQL 쿼리용 작은따옴표 이스케이프 함수
+function escapeForSQL(text) {
+  if (typeof text === 'string') {
+    return text.replace(/'/g, "''");  // ' -> ''
+  }
+  return text;
+}
+
+// 배열 내 문자열 이스케이프
+function escapeArray(arr) {
+  if (Array.isArray(arr)) {
+    return arr.map(item => typeof item === 'string' ? escapeForSQL(item) : item);
+  }
+  return arr;
+}
+
 try {
   // Gemini 응답에서 JSON 추출 (마크다운 코드 블록 제거)
   let jsonText = geminiResponse.trim();
@@ -174,14 +190,14 @@ try {
 
   const analysis = JSON.parse(jsonText);
 
-  // 기본값 설정
+  // 기본값 설정 + SQL 이스케이프 적용
   const result = {
-    email_type: analysis.email_type || "기타",
+    email_type: escapeForSQL(analysis.email_type || "기타"),
     importance_score: Math.min(10, Math.max(0, analysis.importance_score || 5)),
     needs_reply: analysis.needs_reply === true,
-    sentiment: analysis.sentiment || "neutral",
-    key_points: Array.isArray(analysis.key_points) ? analysis.key_points : [],
-    recommended_action: analysis.recommended_action || "검토 필요"
+    sentiment: escapeForSQL(analysis.sentiment || "neutral"),
+    key_points: escapeArray(Array.isArray(analysis.key_points) ? analysis.key_points : []),
+    recommended_action: escapeForSQL(analysis.recommended_action || "검토 필요")
   };
 
   return [{
@@ -203,7 +219,7 @@ try {
         sentiment: "neutral",
         key_points: ["분석 실패"],
         recommended_action: "수동 검토 필요",
-        parse_error: error.message
+        parse_error: escapeForSQL(error.message)
       }
     }
   }];

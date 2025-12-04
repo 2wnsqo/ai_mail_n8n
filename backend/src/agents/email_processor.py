@@ -6,7 +6,6 @@ n8n 기본 에이전트들을 orchestration하여 복잡한 이메일 처리 워
 
 from typing import TypedDict, List, Dict, Literal, Optional
 from langgraph.graph import StateGraph, END
-import google.generativeai as genai
 from datetime import date
 import logging
 import json
@@ -16,10 +15,6 @@ from ..services.db_service import db
 from ..config import settings
 
 logger = logging.getLogger(__name__)
-
-# Gemini 설정
-genai.configure(api_key=settings.GEMINI_API_KEY)
-classifier_model = genai.GenerativeModel('gemini-2.5-flash')
 
 
 # ========== State 정의 ==========
@@ -79,7 +74,7 @@ def fetch_emails_node(state: EmailProcessingState) -> Dict:
 
 def classify_emails_node(state: EmailProcessingState) -> Dict:
     """
-    Step 2: LangGraph 자체 로직 - Gemini로 이메일 분류
+    Step 2: n8n Webhook으로 이메일 분류
     """
     logger.info(f"[Node] classify_emails_node 시작: {len(state['email_ids'])}개 이메일")
 
@@ -91,55 +86,50 @@ def classify_emails_node(state: EmailProcessingState) -> Dict:
         }
 
     try:
+        import requests
+
         # PostgreSQL에서 이메일 조회
         emails = db.get_emails_by_ids(state["email_ids"])
 
         classifications = []
         important_emails = []
 
+        webhook_url = "http://n8n:5678/webhook/analyze"
+
         for email in emails:
-            # Gemini로 분류
-            prompt = f"""다음 이메일을 분석해주세요.
+            try:
+                # n8n Webhook 호출
+                payload = {
+                    "email_id": email['id'],
+                    "subject": email.get('subject', ''),
+                    "sender_name": email.get('sender_name', ''),
+                    "sender_address": email.get('sender_address', ''),
+                    "body_text": email.get('body_text', '')
+                }
 
-보낸 사람: {email.get('sender_name') or email.get('sender_address')}
-제목: {email.get('subject', '(제목 없음)')}
-본문: {email.get('body_text', '')[:500]}
+                response = requests.post(webhook_url, json=payload, timeout=30)
 
-다음 항목을 JSON으로 반환하세요:
-{{
-  "email_type": "채용|마케팅|공지|개인|기타",
-  "importance_score": 0-10 점수,
-  "needs_reply": true/false,
-  "sentiment": "positive|neutral|negative",
-  "key_points": ["포인트1", "포인트2"],
-  "recommended_action": "추천 행동"
-}}
+                if response.status_code == 200:
+                    result = response.json()
+                    analysis = result.get("analysis", {})
+                    analysis['email_id'] = email['id']
 
-JSON만 출력하세요."""
+                    classifications.append(analysis)
 
-            response = classifier_model.generate_content(prompt)
-            analysis_text = response.text.strip()
+                    # 중요도 >= 7이면 important 리스트에 추가
+                    if analysis.get('importance_score', 0) >= 7:
+                        important_emails.append(email['id'])
 
-            # JSON 파싱
-            if analysis_text.startswith('```json'):
-                analysis_text = analysis_text.replace('```json\n', '').replace('```', '')
-            elif analysis_text.startswith('```'):
-                analysis_text = analysis_text.replace('```\n', '').replace('```', '')
+                    logger.info(
+                        f"[Node] 이메일 {email['id']} 분류: "
+                        f"{analysis.get('email_type')}, "
+                        f"중요도 {analysis.get('importance_score')}"
+                    )
+                else:
+                    logger.error(f"[Node] n8n 분석 실패: email_id={email['id']}, status={response.status_code}")
 
-            analysis = json.loads(analysis_text)
-            analysis['email_id'] = email['id']
-
-            classifications.append(analysis)
-
-            # 중요도 >= 7이면 important 리스트에 추가
-            if analysis.get('importance_score', 0) >= 7:
-                important_emails.append(email['id'])
-
-            logger.info(
-                f"[Node] 이메일 {email['id']} 분류: "
-                f"{analysis.get('email_type')}, "
-                f"중요도 {analysis.get('importance_score')}"
-            )
+            except Exception as e:
+                logger.error(f"[Node] 이메일 {email['id']} 분석 실패: {e}")
 
         return {
             "emails": emails,
@@ -416,6 +406,89 @@ class EmailProcessor:
         logger.info(f"[Supervisor] generate_daily_summary 완료")
 
         return final_state
+
+    def analyze_single_email(self, email_id: int) -> Dict:
+        """
+        단일 이메일 분석 워크플로우 (n8n을 통해 Gemini 호출)
+
+        Args:
+            email_id: 분석할 이메일 ID
+
+        Returns:
+            {
+                "success": true,
+                "email_id": 123,
+                "analysis": {
+                    "email_type": "채용",
+                    "importance_score": 8,
+                    "needs_reply": true,
+                    "sentiment": "positive",
+                    "key_points": [...]
+                }
+            }
+        """
+        logger.info(f"[Supervisor] analyze_single_email 시작: email_id={email_id}")
+
+        try:
+            # n8n_tools를 통해 분석 (n8n → Gemini)
+            result = n8n_tools.analyze_email(email_id)
+
+            logger.info(f"[Supervisor] analyze_single_email 완료: {result.get('analysis', {}).get('email_type')}")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"[Supervisor] analyze_single_email 실패: {e}")
+            return {
+                "success": False,
+                "email_id": email_id,
+                "error": str(e)
+            }
+
+    def analyze_multiple_emails(self, email_ids: List[int]) -> Dict:
+        """
+        여러 이메일 분석 워크플로우 (n8n을 통해 Gemini 호출)
+
+        Args:
+            email_ids: 분석할 이메일 ID 리스트
+
+        Returns:
+            {
+                "total": 10,
+                "results": [
+                    {"email_id": 1, "success": true, "analysis": {...}},
+                    {"email_id": 2, "success": true, "analysis": {...}}
+                ]
+            }
+        """
+        logger.info(f"[Supervisor] analyze_multiple_emails 시작: {len(email_ids)}개 이메일")
+
+        results = []
+
+        for email_id in email_ids:
+            try:
+                result = n8n_tools.analyze_email(email_id)
+                results.append({
+                    "email_id": email_id,
+                    "success": result.get("success", True),
+                    "analysis": result.get("analysis", {})
+                })
+                logger.info(f"[Supervisor] 이메일 {email_id} 분석 완료")
+
+            except Exception as e:
+                logger.error(f"[Supervisor] 이메일 {email_id} 분석 실패: {e}")
+                results.append({
+                    "email_id": email_id,
+                    "success": False,
+                    "error": str(e)
+                })
+
+        logger.info(f"[Supervisor] analyze_multiple_emails 완료: 성공={sum(1 for r in results if r['success'])}, 실패={sum(1 for r in results if not r['success'])}")
+
+        return {
+            "total": len(email_ids),
+            "results": results
+        }
 
 
 # 전역 인스턴스
