@@ -24,6 +24,7 @@ import os
 import argparse
 import requests
 import psycopg2
+import time
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
 from pathlib import Path
@@ -382,6 +383,11 @@ class EvaluationRunner:
         success = 0
         failed = 0
 
+        # Gemini 무료 tier Rate Limit: 분당 20회
+        # 안전하게 4초 딜레이 (60초 / 15회 = 4초)
+        REQUEST_DELAY = 4  # seconds
+        RETRY_DELAY = 45  # seconds (Rate Limit 에러 시 - 넉넉하게)
+
         try:
             for i, email in enumerate(emails):
                 synthetic_id = email["id"]  # 원본 ID (synthetic_001)
@@ -389,8 +395,19 @@ class EvaluationRunner:
 
                 print(f"\n[{i + 1}/{total}] 분석 중: {email['subject'][:40]}... (DB ID: {db_id})")
 
-                # API 호출
+                # Rate Limit 방지: 첫 번째 요청 이후부터 딜레이 적용
+                if i > 0:
+                    print(f"  ⏳ Rate Limit 대기 중... ({REQUEST_DELAY}초)")
+                    time.sleep(REQUEST_DELAY)
+
+                # API 호출 (실패 시 1회 재시도)
                 ai_result = self.call_analyze_api(email)
+
+                # 빈 응답이면 Rate Limit 가능성 - 재시도
+                if ai_result is None:
+                    print(f"  🔄 재시도 중... ({RETRY_DELAY}초 대기)")
+                    time.sleep(RETRY_DELAY)
+                    ai_result = self.call_analyze_api(email)
 
                 if ai_result and ai_result.get("success") is not False:
                     # Ground Truth 가져오기

@@ -1,0 +1,138 @@
+{
+  "name": "Email Analysis with RAG",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analyze",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-analyze",
+      "name": "Webhook - Analyze",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "analyze-webhook-id"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Webhook에서 받은 데이터 추출\nconst input = $input.first().json;\nconst body = input.body || input;\n\nconst email_id = body.email_id;\nconst subject = body.subject || '';\nconst sender_name = body.sender_name || '';\nconst sender_address = body.sender_address || '';\nconst body_text = body.body_text || '';\nconst rag_prompt = body.rag_prompt || null;\n\n// RAG 프롬프트가 있으면 사용, 없으면 기본 프롬프트 생성\nlet prompt;\n\nif (rag_prompt) {\n    // RAG 강화 프롬프트 사용 (백엔드에서 생성됨)\n    prompt = rag_prompt;\n    console.log('[RAG] RAG 강화 프롬프트 사용');\n} else {\n    // 기본 프롬프트\n    prompt = `다음 이메일을 분석해주세요.\n\n## 이메일 정보\n- 제목: ${subject}\n- 발신자: ${sender_name} <${sender_address}>\n- 본문:\n${body_text.substring(0, 1500)}\n\n## 분석 요청\n위 이메일을 분석하여 다음 JSON 형식으로 응답해주세요:\n{\n    \"email_type\": \"채용|마케팅|공지|개인|기타 중 하나\",\n    \"importance_score\": 1-10 사이의 정수,\n    \"needs_reply\": true 또는 false,\n    \"sentiment\": \"positive|negative|neutral 중 하나\",\n    \"key_points\": [\"핵심 포인트 1\", \"핵심 포인트 2\", ...]\n}`;\n    console.log('[RAG] 기본 프롬프트 사용');\n}\n\nreturn [{\n    json: {\n        email_id: email_id,\n        prompt: prompt,\n        used_rag: rag_prompt !== null\n    }\n}];"
+      },
+      "id": "code-prepare-prompt",
+      "name": "Code - Prepare Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "options": {
+          "maxOutputTokens": 1024,
+          "temperature": 0.3
+        }
+      },
+      "id": "gemini-analyze",
+      "name": "Gemini - Analyze Email",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [440, 0],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "8p9arjKZfji38AJR",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gemini 응답 파싱\nconst geminiResponse = $input.first().json;\nconst prepareData = $('Code - Prepare Prompt').first().json;\n\nconst email_id = prepareData.email_id;\nconst used_rag = prepareData.used_rag;\n\n// Gemini 응답에서 텍스트 추출\nlet responseText = '';\nif (geminiResponse.content && geminiResponse.content.parts) {\n    responseText = geminiResponse.content.parts[0].text || '';\n} else if (geminiResponse.text) {\n    responseText = geminiResponse.text;\n}\n\n// JSON 파싱 시도\nlet analysis = null;\ntry {\n    // 마크다운 코드 블록 제거\n    let jsonText = responseText.trim();\n    if (jsonText.startsWith('```json')) {\n        jsonText = jsonText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '');\n    } else if (jsonText.startsWith('```')) {\n        jsonText = jsonText.replace(/```\\n?/g, '');\n    }\n    \n    analysis = JSON.parse(jsonText);\n} catch (e) {\n    // JSON 파싱 실패 시 기본값\n    analysis = {\n        email_type: \"기타\",\n        importance_score: 5,\n        needs_reply: false,\n        sentiment: \"neutral\",\n        key_points: [\"분석 실패 - 수동 검토 필요\"],\n        parse_error: e.message\n    };\n}\n\n// 데이터 정규화\nconst result = {\n    email_type: analysis.email_type || \"기타\",\n    importance_score: String(Math.min(10, Math.max(1, parseInt(analysis.importance_score) || 5))),\n    needs_reply: String(analysis.needs_reply === true),\n    sentiment: analysis.sentiment || \"neutral\",\n    key_points: JSON.stringify(analysis.key_points || [])\n};\n\nreturn [{\n    json: {\n        success: true,\n        email_id: email_id,\n        used_rag: used_rag,\n        email_type: result.email_type,\n        importance_score: result.importance_score,\n        needs_reply: result.needs_reply,\n        sentiment: result.sentiment,\n        key_points: result.key_points\n    }\n}];"
+      },
+      "id": "code-parse-response",
+      "name": "Code - Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [880, 0]
+    }
+  ],
+  "connections": {
+    "Webhook - Analyze": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare Prompt": {
+      "main": [
+        [
+          {
+            "node": "Gemini - Analyze Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini - Analyze Email": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

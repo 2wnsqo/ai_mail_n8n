@@ -226,7 +226,7 @@ class N8nToolWrapper:
             logger.error(f"[n8n] GenerateReplyAgent 실패: {e}")
             raise Exception(f"n8n 연결 실패: {str(e)}")
 
-    def analyze_email(self, email_id: int, email_data: Dict = None) -> Dict:
+    def analyze_email(self, email_id: int, email_data: Dict = None, use_rag: bool = True) -> Dict:
         """
         워크플로우 #5: 이메일 분석 (AnalyzeEmailAgent)
 
@@ -234,6 +234,7 @@ class N8nToolWrapper:
             email_id: 분석할 이메일 ID
             email_data: 이메일 데이터 (subject, sender_name, sender_address, body_text)
                        None이면 DB에서 조회
+            use_rag: RAG 강화 프롬프트 사용 여부 (기본: True)
 
         Returns:
             {
@@ -256,19 +257,25 @@ class N8nToolWrapper:
                 raise Exception(f"Email {email_id} not found")
             email_data = email
 
+        # RAG 강화 프롬프트 생성
+        rag_prompt = None
+        if use_rag:
+            rag_prompt = self._get_rag_enhanced_prompt(email_data)
+
         url = f"{self.base_url}/webhook/analyze"
         payload = {
             "email_id": email_id,
             "subject": email_data.get('subject', ''),
             "sender_name": email_data.get('sender_name', ''),
             "sender_address": email_data.get('sender_address', ''),
-            "body_text": email_data.get('body_text', '')
+            "body_text": email_data.get('body_text', ''),
+            "rag_prompt": rag_prompt  # RAG 강화 프롬프트 추가
         }
 
-        logger.info(f"[n8n] AnalyzeEmailAgent 호출: email_id={email_id}")
+        logger.info(f"[n8n] AnalyzeEmailAgent 호출: email_id={email_id}, use_rag={use_rag}")
 
         try:
-            response = requests.post(url, json=payload, timeout=30)
+            response = requests.post(url, json=payload, timeout=60)
             response.raise_for_status()
 
             result = response.json()
@@ -278,11 +285,43 @@ class N8nToolWrapper:
 
         except requests.exceptions.Timeout:
             logger.error("[n8n] AnalyzeEmailAgent 타임아웃")
-            raise Exception("이메일 분석 시간 초과 (30초)")
+            raise Exception("이메일 분석 시간 초과 (60초)")
 
         except requests.exceptions.RequestException as e:
             logger.error(f"[n8n] AnalyzeEmailAgent 실패: {e}")
             raise Exception(f"n8n 연결 실패: {str(e)}")
+
+    def _get_rag_enhanced_prompt(self, email_data: Dict) -> Optional[str]:
+        """
+        RAG 서비스를 통해 강화된 분석 프롬프트 생성
+
+        Args:
+            email_data: 이메일 데이터
+
+        Returns:
+            RAG 컨텍스트가 포함된 프롬프트 또는 None
+        """
+        try:
+            from ..rag.rag_service import EmailRAGService
+            rag = EmailRAGService()
+
+            if not rag.is_ready():
+                logger.warning("[RAG] RAG 서비스가 준비되지 않음, 기본 프롬프트 사용")
+                return None
+
+            enhanced_prompt = rag.get_enhanced_analysis_prompt(
+                email_subject=email_data.get('subject', ''),
+                email_body=email_data.get('body_text', ''),
+                sender_name=email_data.get('sender_name', ''),
+                sender_address=email_data.get('sender_address', '')
+            )
+
+            logger.info("[RAG] RAG 강화 프롬프트 생성 완료")
+            return enhanced_prompt
+
+        except Exception as e:
+            logger.warning(f"[RAG] RAG 프롬프트 생성 실패, 기본 프롬프트 사용: {e}")
+            return None
 
 
 # 전역 인스턴스

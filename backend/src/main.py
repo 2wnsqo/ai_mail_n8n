@@ -23,6 +23,21 @@ from src.config import settings
 from src.agents.email_processor import email_processor
 from src.tools.n8n_tools import n8n_tools
 
+# RAG 서비스 (지연 로딩)
+_rag_service = None
+
+def get_rag_service():
+    """RAG 서비스 인스턴스 가져오기 (지연 로딩)"""
+    global _rag_service
+    if _rag_service is None:
+        try:
+            from src.rag.rag_service import EmailRAGService
+            _rag_service = EmailRAGService()
+        except Exception as e:
+            logger.warning(f"RAG 서비스 로드 실패: {e}")
+            _rag_service = None
+    return _rag_service
+
 app = FastAPI(
     title="AI Email Assistant API",
     description="LangGraph + n8n 하이브리드 AI 메일 비서 시스템",
@@ -53,7 +68,16 @@ async def health_check():
         # DB 연결 테스트
         conn = db.get_connection()
         conn.close()
-        return {"status": "healthy", "database": "connected"}
+
+        # RAG 상태 확인
+        rag = get_rag_service()
+        rag_status = "ready" if rag and rag.is_ready() else "not_ready"
+
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "rag": rag_status
+        }
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
 
@@ -581,6 +605,183 @@ async def get_agent_logs(email_id: int):
         return {"email_id": email_id, "logs": logs}
 
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== RAG API ==========
+
+@app.get("/rag/status")
+async def get_rag_status():
+    """RAG 서비스 상태 확인"""
+    try:
+        rag = get_rag_service()
+        if rag is None:
+            return {
+                "status": "unavailable",
+                "message": "RAG 서비스를 로드할 수 없습니다. 패키지를 확인해주세요."
+            }
+
+        is_ready = rag.is_ready()
+        collections = []
+
+        if is_ready:
+            try:
+                for col in rag.client.list_collections():
+                    collections.append({
+                        "name": col.name,
+                        "count": col.count()
+                    })
+            except:
+                pass
+
+        return {
+            "status": "ready" if is_ready else "not_initialized",
+            "collections": collections,
+            "message": "RAG 서비스가 준비되었습니다." if is_ready else "벡터 DB를 초기화해주세요."
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
+@app.post("/rag/enhance-prompt")
+async def enhance_prompt_with_rag(email_id: int):
+    """
+    RAG로 강화된 분석 프롬프트 생성
+
+    n8n 워크플로우에서 Gemini 호출 전에 이 API를 호출하여
+    RAG 컨텍스트가 포함된 프롬프트를 받아 사용합니다.
+    """
+    try:
+        rag = get_rag_service()
+        if rag is None or not rag.is_ready():
+            raise HTTPException(
+                status_code=503,
+                detail="RAG 서비스가 준비되지 않았습니다."
+            )
+
+        # 이메일 조회
+        email = db.get_email_by_id(email_id)
+        if not email:
+            raise HTTPException(status_code=404, detail="Email not found")
+
+        # RAG 강화 프롬프트 생성
+        enhanced_prompt = rag.get_enhanced_analysis_prompt(
+            email_subject=email.get('subject', ''),
+            email_body=email.get('body_text', ''),
+            sender_name=email.get('sender_name', ''),
+            sender_address=email.get('sender_address', '')
+        )
+
+        return {
+            "success": True,
+            "email_id": email_id,
+            "enhanced_prompt": enhanced_prompt
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"RAG 프롬프트 생성 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/rag/similar-emails")
+async def find_similar_emails(
+    subject: str,
+    body: str,
+    collection: str = "email_classification",
+    n_results: int = 5
+):
+    """
+    유사 이메일 검색
+
+    Args:
+        subject: 이메일 제목
+        body: 이메일 본문
+        collection: 검색할 컬렉션 (email_classification, reply_templates, email_importance)
+        n_results: 반환할 결과 수
+    """
+    try:
+        rag = get_rag_service()
+        if rag is None or not rag.is_ready():
+            raise HTTPException(
+                status_code=503,
+                detail="RAG 서비스가 준비되지 않았습니다."
+            )
+
+        query_text = f"{subject} {body[:500]}"
+        similar = rag.search_similar_emails(
+            query_text,
+            collection_name=collection,
+            n_results=n_results
+        )
+
+        return {
+            "success": True,
+            "query": query_text[:100] + "...",
+            "collection": collection,
+            "results": similar
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"유사 이메일 검색 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/rag/reply-context")
+async def get_reply_context(email_id: int, preferred_tone: str = "formal"):
+    """
+    답변 생성을 위한 RAG 컨텍스트 조회
+
+    n8n 워크플로우에서 답변 생성 전에 이 API를 호출하여
+    유사 답변 템플릿을 참조합니다.
+    """
+    try:
+        rag = get_rag_service()
+        if rag is None or not rag.is_ready():
+            raise HTTPException(
+                status_code=503,
+                detail="RAG 서비스가 준비되지 않았습니다."
+            )
+
+        # 이메일 조회
+        email = db.get_email_by_id(email_id)
+        if not email:
+            raise HTTPException(status_code=404, detail="Email not found")
+
+        # 유사 템플릿 검색
+        templates = rag.get_reply_templates(
+            email_subject=email.get('subject', ''),
+            email_body=email.get('body_text', ''),
+            email_type=email.get('email_type'),
+            n_templates=3
+        )
+
+        # RAG 강화 답변 프롬프트 생성
+        enhanced_prompt = rag.get_enhanced_reply_prompt(
+            email_subject=email.get('subject', ''),
+            email_body=email.get('body_text', ''),
+            email_type=email.get('email_type', '기타'),
+            sender_name=email.get('sender_name', ''),
+            preferred_tone=preferred_tone
+        )
+
+        return {
+            "success": True,
+            "email_id": email_id,
+            "similar_templates": templates,
+            "enhanced_prompt": enhanced_prompt
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"답변 컨텍스트 조회 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
