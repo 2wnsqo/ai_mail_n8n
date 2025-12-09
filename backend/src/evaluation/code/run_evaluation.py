@@ -273,13 +273,38 @@ class EvaluationRunner:
             self.test_email_ids = []
             self.id_mapping = {}
 
+    def _get_rag_prompt(self, email_data: Dict) -> Optional[str]:
+        """RAG 강화 프롬프트 생성"""
+        try:
+            # RAG 서비스 임포트
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+            from rag.rag_service import EmailRAGService
+
+            rag = EmailRAGService()
+            if not rag.is_ready():
+                return None
+
+            return rag.get_enhanced_analysis_prompt(
+                email_subject=email_data.get('subject', ''),
+                email_body=email_data.get('body_text', ''),
+                sender_name=email_data.get('sender_name', ''),
+                sender_address=email_data.get('sender_address', '')
+            )
+        except Exception as e:
+            print(f"  [WARN] RAG 프롬프트 생성 실패: {e}")
+            return None
+
     def call_analyze_api(self, email_data: Dict) -> Optional[Dict]:
-        """n8n analyze webhook 호출 (실제 DB ID 사용)"""
+        """n8n analyze webhook 호출 (실제 DB ID 사용, RAG 프롬프트 포함)"""
         try:
             webhook_url = f"{self.n8n_url}/webhook/analyze"
 
             # 실제 DB ID 사용
             db_id = email_data.get("db_id", email_data["id"])
+
+            # RAG 강화 프롬프트 생성
+            rag_prompt = self._get_rag_prompt(email_data)
 
             # 특수문자 정제 적용
             payload = {
@@ -287,7 +312,8 @@ class EvaluationRunner:
                 "subject": self.sanitize_text(email_data["subject"]),
                 "sender_name": self.sanitize_text(email_data["sender_name"]),
                 "sender_address": email_data["sender_address"],
-                "body_text": self.sanitize_text(email_data["body_text"])
+                "body_text": self.sanitize_text(email_data["body_text"]),
+                "rag_prompt": rag_prompt  # RAG 강화 프롬프트 추가
             }
 
             # 명시적으로 UTF-8 인코딩 및 Content-Type 설정

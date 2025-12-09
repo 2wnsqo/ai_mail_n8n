@@ -1,10 +1,17 @@
 """
-Email RAG Service
+Email RAG Service (Phase 3-Lite - Simplified Prompt Engineering)
 
 ChromaDB 벡터 저장소를 활용하여 이메일 분석 및 답변 생성을 개선합니다.
+
+Phase 3-Lite 개선사항:
+- 프롬프트 간소화 (복잡한 CoT, Negative Examples 제거)
+- "기타" 카테고리 명확화 (자동 알림 메일 분류 개선)
+- 중요도 앵커링 균형 조정 (낮은 점수 강화)
+- Few-shot 예시 최적화
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import logging
@@ -21,6 +28,97 @@ logger = logging.getLogger(__name__)
 # 경로 설정
 RAG_DIR = Path(__file__).parent
 VECTORDB_DIR = RAG_DIR / "vectordb"
+
+# ============================================================
+# 프롬프트 엔지니어링 상수 정의
+# ============================================================
+
+# 이메일 유형별 키워드 및 판단 근거 (Phase 3-Lite: 기타 카테고리 강화)
+EMAIL_TYPE_PATTERNS = {
+    "채용": {
+        "keywords": ["면접", "채용", "지원", "입사", "이력서", "합격", "불합격", "서류", "recruit", "interview", "resume", "job", "position", "hire"],
+        "reasoning": "채용 프로세스 관련 키워드 포함 → 인사/채용 업무",
+        "priority": 2  # 높은 우선순위
+    },
+    "마케팅": {
+        "keywords": ["할인", "프로모션", "세일", "구독", "뉴스레터", "광고", "이벤트", "쿠폰", "무료", "혜택", "sale", "discount", "offer", "subscribe", "promotion"],
+        "reasoning": "판촉/홍보 목적의 키워드 포함 → 마케팅 콘텐츠",
+        "priority": 3
+    },
+    "공지": {
+        # Phase 3-Lite: 공지 키워드 축소 (자동 알림과 구분)
+        "keywords": ["공지사항", "사내공지", "전체공지", "정책변경", "시스템점검", "서비스중단", "policy change", "system maintenance"],
+        "reasoning": "조직 전체 대상 공식 안내 → 공지사항",
+        "priority": 4  # 낮은 우선순위 (기타보다 먼저 체크하지만 엄격)
+    },
+    "개인": {
+        "keywords": ["요청드립니다", "문의드립니다", "확인부탁", "검토부탁", "의견주세요", "협의", "미팅요청", "회의요청"],
+        "reasoning": "특정인에게 보내는 요청/협의 → 1:1 업무 커뮤니케이션",
+        "priority": 1  # 가장 높은 우선순위
+    },
+    "기타": {
+        # Phase 3-Lite: 기타 카테고리 명확화 (자동 알림 메일 포함)
+        "keywords": ["배송", "택배", "발송", "결제", "승인", "인증", "로그인", "비밀번호", "계정", "영수증",
+                     "delivery", "shipped", "payment", "receipt", "verification", "password", "account",
+                     "카드", "출금", "입금", "이체", "거래"],
+        "reasoning": "자동 발송 알림, 시스템 알림, 거래 확인 → 기타 (정보성 메일)",
+        "priority": 5  # 기본값
+    }
+}
+
+# 자동 알림 메일 패턴 (기타로 분류해야 함)
+AUTO_NOTIFICATION_PATTERNS = [
+    "배송", "택배", "발송완료", "배달완료",  # 배송
+    "결제", "승인", "거래", "출금", "입금",  # 금융
+    "인증", "인증번호", "verification",  # 인증
+    "비밀번호", "password", "로그인",  # 계정
+    "영수증", "receipt", "내역"  # 거래 내역
+]
+
+# 중요도 기준 앵커 (Phase 3-Lite: 낮은 점수 강화)
+IMPORTANCE_ANCHORS = {
+    "very_low": {
+        "range": "1-2",
+        "description": "매우 낮음: 스팸, 광고, 자동 발송 알림(배송/결제/인증)",
+        "examples": ["택배 배송 완료", "카드 결제 알림", "비밀번호 변경 완료", "뉴스레터"],
+        "auto_assign_keywords": ["배송", "결제", "인증", "비밀번호", "뉴스레터"]
+    },
+    "low": {
+        "range": "3-4",
+        "description": "낮음: 정보성 알림, FYI, 긴급하지 않은 공지",
+        "examples": ["시스템 업데이트 안내", "서비스 이용 안내", "주간 리포트"],
+        "auto_assign_keywords": []
+    },
+    "medium": {
+        "range": "5-6",
+        "description": "보통: 일반 업무, 참조용 정보, 급하지 않은 요청",
+        "examples": ["일반 업무 공유", "참고용 문서", "정기 보고서"],
+        "auto_assign_keywords": []
+    },
+    "high": {
+        "range": "7-8",
+        "description": "높음: 답변/조치 필요, 기한 있음, 중요한 결정",
+        "examples": ["프로젝트 마감 안내", "승인 요청", "미팅 일정 확정"],
+        "auto_assign_keywords": ["마감", "승인", "확정"]
+    },
+    "urgent": {
+        "range": "9-10",
+        "description": "긴급: 즉시 대응 필요, 오늘 마감, 면접 일정",
+        "examples": ["오늘 마감", "면접 일정 확정", "긴급 장애"],
+        "auto_assign_keywords": ["긴급", "오늘", "즉시", "면접"]
+    }
+}
+
+# 발신자 도메인 패턴
+SENDER_DOMAIN_HINTS = {
+    "noreply": {"type_hint": "마케팅/공지", "importance_modifier": -2},
+    "newsletter": {"type_hint": "마케팅", "importance_modifier": -3},
+    "support": {"type_hint": "공지/개인", "importance_modifier": 0},
+    "hr": {"type_hint": "채용", "importance_modifier": +2},
+    "recruit": {"type_hint": "채용", "importance_modifier": +2},
+    "ceo": {"type_hint": "개인", "importance_modifier": +3},
+    "admin": {"type_hint": "공지", "importance_modifier": +1},
+}
 
 
 class EmailRAGService:
@@ -101,6 +199,134 @@ class EmailRAGService:
         """텍스트를 벡터로 변환"""
         return self.model.encode([text]).tolist()[0]
 
+    # ============================================================
+    # Phase 3: 프롬프트 엔지니어링 헬퍼 함수들
+    # ============================================================
+
+    def _get_type_reasoning(self, email_type: str, subject: str, body: str = "") -> str:
+        """
+        이메일 유형 분류에 대한 판단 근거 생성 (Few-shot Reasoning)
+
+        Args:
+            email_type: 분류된 이메일 유형
+            subject: 이메일 제목
+            body: 이메일 본문 (선택)
+
+        Returns:
+            판단 근거 문자열
+        """
+        text = f"{subject} {body[:200]}".lower()
+
+        if email_type not in EMAIL_TYPE_PATTERNS:
+            return "일반 이메일 패턴"
+
+        pattern = EMAIL_TYPE_PATTERNS[email_type]
+        matched_keywords = []
+
+        for keyword in pattern["keywords"]:
+            if keyword.lower() in text:
+                matched_keywords.append(keyword)
+
+        if matched_keywords:
+            keywords_str = ", ".join(matched_keywords[:3])
+            return f"키워드 '{keywords_str}' 감지 → {pattern['reasoning']}"
+
+        return pattern["reasoning"]
+
+    def _get_importance_reasoning(self, score: int, subject: str, sender: str = "") -> str:
+        """
+        중요도 점수에 대한 판단 근거 생성 (Phase 3-Lite: 5단계 레벨)
+
+        Args:
+            score: 중요도 점수 (1-10)
+            subject: 이메일 제목
+            sender: 발신자 정보
+
+        Returns:
+            판단 근거 문자열
+        """
+        # Phase 3-Lite: 5단계 중요도 레벨
+        if score <= 2:
+            level = "very_low"
+        elif score <= 4:
+            level = "low"
+        elif score <= 6:
+            level = "medium"
+        elif score <= 8:
+            level = "high"
+        else:
+            level = "urgent"
+
+        anchor = IMPORTANCE_ANCHORS[level]
+        return f"{anchor['description'].split(':')[0]} ({score}점)"
+
+    def _analyze_sender_pattern(self, sender_address: str) -> Dict:
+        """
+        발신자 주소 패턴 분석
+
+        Args:
+            sender_address: 발신자 이메일 주소
+
+        Returns:
+            분석 결과 딕셔너리
+        """
+        result = {
+            "type_hint": None,
+            "importance_modifier": 0,
+            "is_noreply": False,
+            "domain": ""
+        }
+
+        if not sender_address:
+            return result
+
+        sender_lower = sender_address.lower()
+
+        # 도메인 추출
+        if "@" in sender_lower:
+            result["domain"] = sender_lower.split("@")[1]
+
+        # noreply 체크
+        if "noreply" in sender_lower or "no-reply" in sender_lower:
+            result["is_noreply"] = True
+            result["importance_modifier"] = -2
+
+        # 패턴 매칭
+        for pattern, hints in SENDER_DOMAIN_HINTS.items():
+            if pattern in sender_lower:
+                result["type_hint"] = hints["type_hint"]
+                result["importance_modifier"] = hints["importance_modifier"]
+                break
+
+        return result
+
+    def _extract_keywords(self, text: str, max_keywords: int = 5) -> List[str]:
+        """
+        텍스트에서 주요 키워드 추출
+
+        Args:
+            text: 분석할 텍스트
+            max_keywords: 최대 키워드 수
+
+        Returns:
+            키워드 리스트
+        """
+        # 모든 유형의 키워드 수집
+        all_keywords = []
+        for patterns in EMAIL_TYPE_PATTERNS.values():
+            all_keywords.extend(patterns["keywords"])
+
+        text_lower = text.lower()
+        found_keywords = []
+
+        for keyword in all_keywords:
+            if keyword.lower() in text_lower and keyword not in found_keywords:
+                found_keywords.append(keyword)
+                if len(found_keywords) >= max_keywords:
+                    break
+
+        return found_keywords
+
     def search_similar_emails(
         self,
         query_text: str,
@@ -153,20 +379,18 @@ class EmailRAGService:
         self,
         email_subject: str,
         email_body: str,
-        n_examples: int = 3
+        n_examples: int = 2
     ) -> str:
         """
-        이메일 분류를 위한 RAG 컨텍스트 생성
-
-        유사 이메일의 분류 결과를 참조하여 프롬프트에 추가
+        이메일 분류를 위한 RAG 컨텍스트 생성 (Phase 3-Lite: 간소화)
 
         Args:
             email_subject: 이메일 제목
             email_body: 이메일 본문
-            n_examples: 예시 수
+            n_examples: 예시 수 (기본 2개로 축소)
 
         Returns:
-            분류 참조용 컨텍스트 문자열
+            분류 참조용 컨텍스트 문자열 (간소화)
         """
         query = f"{email_subject} {email_body[:500]}"
         similar = self.search_similar_emails(
@@ -178,18 +402,18 @@ class EmailRAGService:
         if not similar:
             return ""
 
-        context_parts = ["다음은 유사한 이메일의 분류 예시입니다:\n"]
+        # Phase 3-Lite: 간소화된 Few-shot 예시
+        context_parts = ["## 유사 이메일 참조\n"]
 
         for i, email in enumerate(similar, 1):
             metadata = email['metadata']
-            context_parts.append(
-                f"예시 {i}:\n"
-                f"- 제목: {metadata.get('subject', 'N/A')}\n"
-                f"- 유형: {metadata.get('email_type', 'N/A')}\n"
-                f"- 중요도: {metadata.get('importance_score', 'N/A')}\n"
-            )
+            email_type = metadata.get('email_type', '기타')
+            subject = metadata.get('subject', 'N/A')[:50]
+            importance = metadata.get('importance_score', 5)
 
-        context_parts.append("\n위 예시를 참고하여 분류해주세요.")
+            context_parts.append(
+                f"- 예시{i}: [{email_type}] \"{subject}\" (중요도 {importance})\n"
+            )
 
         return "\n".join(context_parts)
 
@@ -200,7 +424,7 @@ class EmailRAGService:
         n_examples: int = 3
     ) -> Tuple[str, List[int]]:
         """
-        중요도 판단을 위한 RAG 컨텍스트 생성
+        중요도 판단을 위한 RAG 컨텍스트 생성 (Phase 3: Anchoring 기법 적용)
 
         Args:
             email_subject: 이메일 제목
@@ -217,20 +441,48 @@ class EmailRAGService:
             n_results=n_examples
         )
 
+        # Phase 3: 중요도 기준 앵커 포인트 추가
+        context_parts = [
+            "## 중요도 판단 기준 (Anchoring)\n",
+            "다음 기준에 따라 중요도를 판단하세요:\n"
+        ]
+
+        # 앵커 포인트 추가
+        for level, anchor in IMPORTANCE_ANCHORS.items():
+            examples_str = ", ".join(anchor["examples"][:2])
+            context_parts.append(
+                f"- **{anchor['range']}점**: {anchor['description']}\n"
+                f"  예시: {examples_str}\n"
+            )
+
         if not similar:
-            return "", []
+            return "\n".join(context_parts), []
 
         scores = []
-        context_parts = ["유사 이메일의 중요도 예시:\n"]
+        context_parts.append("\n## 유사 이메일 중요도 참조\n")
 
         for i, email in enumerate(similar, 1):
             metadata = email['metadata']
             score = metadata.get('importance_score', 5)
             scores.append(score)
+            subject = metadata.get('subject', 'N/A')[:50]
+            level = metadata.get('importance_level', 'medium')
+
+            # 판단 근거 생성
+            reasoning = self._get_importance_reasoning(score, subject)
 
             context_parts.append(
-                f"- [{metadata.get('importance_level', 'medium')}] "
-                f"중요도 {score}/10: {metadata.get('subject', 'N/A')[:50]}"
+                f"- **{score}/10** [{level}]: {subject}\n"
+                f"  └ 근거: {reasoning}\n"
+            )
+
+        # 유사 이메일 기반 추천 범위
+        if scores:
+            avg_score = sum(scores) / len(scores)
+            min_score = min(scores)
+            max_score = max(scores)
+            context_parts.append(
+                f"\n**참고**: 유사 이메일 평균 {avg_score:.1f}점 (범위: {min_score}-{max_score}점)"
             )
 
         return "\n".join(context_parts), scores
@@ -267,6 +519,20 @@ class EmailRAGService:
             filter_metadata=filter_metadata
         )
 
+    def _is_auto_notification(self, subject: str, body: str) -> bool:
+        """
+        자동 알림 메일 여부 판단 (Phase 3-Lite)
+
+        Args:
+            subject: 이메일 제목
+            body: 이메일 본문
+
+        Returns:
+            자동 알림 메일이면 True
+        """
+        text = f"{subject} {body[:300]}".lower()
+        return any(pattern in text for pattern in AUTO_NOTIFICATION_PATTERNS)
+
     def get_enhanced_analysis_prompt(
         self,
         email_subject: str,
@@ -275,7 +541,12 @@ class EmailRAGService:
         sender_address: str = ""
     ) -> str:
         """
-        RAG로 강화된 분석 프롬프트 생성
+        RAG로 강화된 분석 프롬프트 생성 (Phase 3-Lite: 간소화)
+
+        Phase 3-Lite 개선:
+        - 프롬프트 길이 축소 (복잡한 CoT, Negative Examples 제거)
+        - 자동 알림 메일 분류 개선 (기타 + 낮은 중요도)
+        - 핵심 정보만 포함
 
         Args:
             email_subject: 이메일 제목
@@ -284,42 +555,108 @@ class EmailRAGService:
             sender_address: 발신자 주소
 
         Returns:
-            RAG 컨텍스트가 포함된 분석 프롬프트
+            RAG 컨텍스트가 포함된 간소화된 분석 프롬프트
         """
-        # RAG 컨텍스트 수집
-        classification_context = self.get_classification_context(email_subject, email_body)
-        importance_context, importance_scores = self.get_importance_context(email_subject, email_body)
+        # 자동 알림 메일 체크
+        is_auto = self._is_auto_notification(email_subject, email_body)
 
-        # 유사 이메일 기반 중요도 힌트
-        importance_hint = ""
-        if importance_scores:
-            avg_score = sum(importance_scores) / len(importance_scores)
-            importance_hint = f"\n(참고: 유사 이메일들의 평균 중요도는 {avg_score:.1f}점입니다)"
+        # RAG 컨텍스트 (간소화)
+        classification_context = self.get_classification_context(email_subject, email_body, n_examples=2)
 
-        prompt = f"""다음 이메일을 분석해주세요.
+        # 중요도 기준 (간소화)
+        importance_guide = self._generate_importance_guide_lite()
 
-## 이메일 정보
-- 제목: {email_subject}
-- 발신자: {sender_name} <{sender_address}>
-- 본문:
-{email_body[:1500]}
+        # 자동 알림 힌트
+        auto_hint = ""
+        if is_auto:
+            auto_hint = """
+⚠️ **자동 알림 감지**: 배송/결제/인증 관련 자동 발송 메일로 판단됩니다.
+→ 유형: **기타**, 중요도: **1-3점**, 답변필요: **false**"""
 
-## 참조 정보 (RAG)
+        # noreply 체크
+        noreply_hint = ""
+        if sender_address and ("noreply" in sender_address.lower() or "no-reply" in sender_address.lower()):
+            noreply_hint = "\n📌 noreply 발신자 → 자동 발송 메일일 가능성 높음"
+
+        prompt = f"""이메일을 분석하여 JSON으로 응답하세요.
+
+## 분석 대상
+- **제목**: {email_subject}
+- **발신자**: {sender_name} <{sender_address}>{noreply_hint}
+- **본문**:
+{email_body[:1000]}
+{auto_hint}
+
+## 분류 기준
+
+### 이메일 유형 (email_type)
+- **채용**: 면접, 입사, 채용, 이력서 관련
+- **마케팅**: 할인, 프로모션, 광고, 뉴스레터
+- **공지**: 조직 전체 대상 공식 안내 (사내공지, 정책변경)
+- **개인**: 특정인에게 보내는 요청, 문의, 협의
+- **기타**: 자동 알림(배송/결제/인증), 시스템 알림, 위 4개에 해당 안 됨
+
+### 중요도 (importance_score)
+{importance_guide}
+
 {classification_context}
 
-{importance_context}{importance_hint}
-
-## 분석 요청
-위 이메일을 분석하여 다음 JSON 형식으로 응답해주세요:
+## 출력 (JSON만)
+```json
 {{
-    "email_type": "채용|마케팅|공지|개인|기타 중 하나",
-    "importance_score": 1-10 사이의 정수,
-    "needs_reply": true 또는 false,
-    "sentiment": "positive|negative|neutral 중 하나",
-    "key_points": ["핵심 포인트 1", "핵심 포인트 2", ...]
+    "email_type": "채용|마케팅|공지|개인|기타",
+    "importance_score": 1-10,
+    "needs_reply": true|false,
+    "sentiment": "positive|negative|neutral",
+    "key_points": ["핵심1", "핵심2"]
 }}
-"""
+```"""
+
         return prompt
+
+    def _generate_importance_guide_lite(self) -> str:
+        """Phase 3-Lite: 간소화된 중요도 가이드"""
+        return """- **1-2점**: 자동 알림(배송완료, 결제알림, 비밀번호변경), 스팸, 광고
+- **3-4점**: 정보성 안내, 뉴스레터, FYI
+- **5-6점**: 일반 업무, 참조용 정보
+- **7-8점**: 답변/조치 필요, 기한 있음
+- **9-10점**: 긴급, 면접일정, 오늘 마감"""
+
+    def _generate_type_criteria(self) -> str:
+        """이메일 유형별 분류 기준 생성"""
+        criteria_parts = ["## 이메일 유형별 분류 기준\n"]
+
+        for email_type, patterns in EMAIL_TYPE_PATTERNS.items():
+            if patterns["keywords"]:
+                keywords_sample = ", ".join(patterns["keywords"][:5])
+                criteria_parts.append(
+                    f"### {email_type}\n"
+                    f"- **키워드**: {keywords_sample}\n"
+                    f"- **판단 기준**: {patterns['reasoning']}\n"
+                )
+
+        return "\n".join(criteria_parts)
+
+    def _generate_negative_examples(self) -> str:
+        """잘못된 분류 방지를 위한 Negative Examples 생성"""
+        negative_examples = [
+            "1. **채용 공고 광고** → 채용(X) → **마케팅**(O)\n"
+            "   - 채용 관련 키워드가 있어도 대량 발송된 광고성 이메일은 마케팅",
+
+            "2. **할인 쿠폰이 포함된 개인 요청** → 마케팅(X) → **개인**(O)\n"
+            "   - 할인 키워드가 있어도 특정인에게 보낸 요청은 개인",
+
+            "3. **시스템 점검 안내 (noreply)** → 기타(X) → **공지**(O)\n"
+            "   - noreply 발신이어도 공식 시스템 안내는 공지",
+
+            "4. **면접 일정 확정** → 낮은 중요도(X) → **높은 중요도 9-10**(O)\n"
+            "   - 면접 일정은 시간 민감 정보로 높은 중요도 부여",
+
+            "5. **주간 뉴스레터** → 높은 중요도(X) → **낮은 중요도 1-3**(O)\n"
+            "   - 정기 뉴스레터는 긴급하지 않음"
+        ]
+
+        return "\n".join(negative_examples)
 
     def get_enhanced_reply_prompt(
         self,

@@ -74,9 +74,12 @@ def fetch_emails_node(state: EmailProcessingState) -> Dict:
 
 def classify_emails_node(state: EmailProcessingState) -> Dict:
     """
-    Step 2: n8n Webhook으로 이메일 분류
+    Step 2: n8n_tools를 통해 이메일 분류 (RAG 적용)
+
+    Phase 3 개선: 직접 webhook 호출 대신 n8n_tools.analyze_email() 사용
+    → RAG 프롬프트 엔지니어링이 자동으로 적용됨
     """
-    logger.info(f"[Node] classify_emails_node 시작: {len(state['email_ids'])}개 이메일")
+    logger.info(f"[Node] classify_emails_node 시작: {len(state['email_ids'])}개 이메일 (RAG 적용)")
 
     if not state["email_ids"]:
         return {
@@ -86,33 +89,31 @@ def classify_emails_node(state: EmailProcessingState) -> Dict:
         }
 
     try:
-        import requests
-
         # PostgreSQL에서 이메일 조회
         emails = db.get_emails_by_ids(state["email_ids"])
 
         classifications = []
         important_emails = []
 
-        webhook_url = "http://n8n:5678/webhook/analyze"
-
         for email in emails:
             try:
-                # n8n Webhook 호출
-                payload = {
-                    "email_id": email['id'],
-                    "subject": email.get('subject', ''),
-                    "sender_name": email.get('sender_name', ''),
-                    "sender_address": email.get('sender_address', ''),
-                    "body_text": email.get('body_text', '')
-                }
+                # n8n_tools를 통해 분석 (RAG 프롬프트 자동 적용)
+                result = n8n_tools.analyze_email(
+                    email_id=email['id'],
+                    email_data=email,
+                    use_rag=True  # RAG 프롬프트 엔지니어링 적용
+                )
 
-                response = requests.post(webhook_url, json=payload, timeout=30)
-
-                if response.status_code == 200:
-                    result = response.json()
-                    analysis = result.get("analysis", {})
-                    analysis['email_id'] = email['id']
+                if result.get("success", True):
+                    # n8n 응답에서 분석 결과 추출
+                    analysis = {
+                        "email_id": email['id'],
+                        "email_type": result.get("email_type", "기타"),
+                        "importance_score": int(result.get("importance_score", 5)),
+                        "needs_reply": result.get("needs_reply", "false").lower() == "true" if isinstance(result.get("needs_reply"), str) else result.get("needs_reply", False),
+                        "sentiment": result.get("sentiment", "neutral"),
+                        "key_points": result.get("key_points", [])
+                    }
 
                     classifications.append(analysis)
 
@@ -121,12 +122,12 @@ def classify_emails_node(state: EmailProcessingState) -> Dict:
                         important_emails.append(email['id'])
 
                     logger.info(
-                        f"[Node] 이메일 {email['id']} 분류: "
+                        f"[Node] 이메일 {email['id']} 분류 (RAG): "
                         f"{analysis.get('email_type')}, "
                         f"중요도 {analysis.get('importance_score')}"
                     )
                 else:
-                    logger.error(f"[Node] n8n 분석 실패: email_id={email['id']}, status={response.status_code}")
+                    logger.error(f"[Node] n8n 분석 실패: email_id={email['id']}, error={result.get('error')}")
 
             except Exception as e:
                 logger.error(f"[Node] 이메일 {email['id']} 분석 실패: {e}")
