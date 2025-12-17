@@ -785,6 +785,301 @@ async def get_reply_context(email_id: int, preferred_tone: str = "formal"):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ========== 통계 API ==========
+
+@app.get("/stats/overview")
+async def get_stats_overview():
+    """
+    대시보드용 통계 개요 조회
+
+    - 전체 이메일 수
+    - 유형별/중요도별 분포
+    - 답변 통계
+    """
+    try:
+        conn = db.get_connection()
+        cur = conn.cursor()
+
+        # 전체 이메일 통계
+        cur.execute("""
+            SELECT
+                COUNT(*) as total,
+                COUNT(CASE WHEN email_type IS NOT NULL THEN 1 END) as analyzed,
+                COUNT(CASE WHEN is_replied_to = TRUE THEN 1 END) as replied,
+                COUNT(CASE WHEN needs_reply = TRUE AND is_replied_to = FALSE THEN 1 END) as pending_reply
+            FROM email
+        """)
+        email_stats = cur.fetchone()
+
+        # 유형별 분포
+        cur.execute("""
+            SELECT email_type, COUNT(*) as count
+            FROM email
+            WHERE email_type IS NOT NULL
+            GROUP BY email_type
+            ORDER BY count DESC
+        """)
+        type_distribution = {row['email_type']: row['count'] for row in cur.fetchall()}
+
+        # 중요도별 분포
+        cur.execute("""
+            SELECT
+                CASE
+                    WHEN importance_score <= 3 THEN 'low'
+                    WHEN importance_score <= 6 THEN 'medium'
+                    WHEN importance_score <= 8 THEN 'high'
+                    ELSE 'urgent'
+                END as importance_level,
+                COUNT(*) as count
+            FROM email
+            WHERE importance_score IS NOT NULL
+            GROUP BY importance_level
+        """)
+        importance_distribution = {row['importance_level']: row['count'] for row in cur.fetchall()}
+
+        # 감정별 분포
+        cur.execute("""
+            SELECT sentiment, COUNT(*) as count
+            FROM email
+            WHERE sentiment IS NOT NULL
+            GROUP BY sentiment
+        """)
+        sentiment_distribution = {row['sentiment']: row['count'] for row in cur.fetchall()}
+
+        # 최근 7일 일별 이메일 수
+        cur.execute("""
+            SELECT DATE(received_at) as date, COUNT(*) as count
+            FROM email
+            WHERE received_at >= CURRENT_DATE - INTERVAL '7 days'
+            GROUP BY DATE(received_at)
+            ORDER BY date DESC
+        """)
+        daily_emails = [{"date": str(row['date']), "count": row['count']} for row in cur.fetchall()]
+
+        # 발송 이메일 통계
+        cur.execute("""
+            SELECT COUNT(*) as total,
+                   COUNT(CASE WHEN user_modifications IS NOT NULL THEN 1 END) as modified
+            FROM sent_emails
+        """)
+        sent_stats = cur.fetchone()
+
+        cur.close()
+        conn.close()
+
+        return {
+            "email_stats": {
+                "total": email_stats['total'],
+                "analyzed": email_stats['analyzed'],
+                "replied": email_stats['replied'],
+                "pending_reply": email_stats['pending_reply']
+            },
+            "type_distribution": type_distribution,
+            "importance_distribution": importance_distribution,
+            "sentiment_distribution": sentiment_distribution,
+            "daily_emails": daily_emails,
+            "reply_stats": {
+                "total_sent": sent_stats['total'],
+                "modified_by_user": sent_stats['modified']
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"통계 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stats/reply-history")
+async def get_reply_history(limit: int = 20, offset: int = 0):
+    """
+    답변 히스토리 조회
+
+    - 발송된 답변 목록
+    - 원본 이메일 정보 포함
+    """
+    try:
+        conn = db.get_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                s.id,
+                s.original_email_id,
+                s.to_email,
+                s.to_name,
+                s.subject,
+                s.reply_body,
+                s.sent_at,
+                s.status,
+                s.original_draft,
+                s.user_modifications,
+                e.email_type,
+                e.importance_score
+            FROM sent_emails s
+            LEFT JOIN email e ON s.original_email_id = e.id
+            ORDER BY s.sent_at DESC
+            LIMIT %s OFFSET %s
+        """, (limit, offset))
+
+        replies = []
+        for row in cur.fetchall():
+            replies.append({
+                "id": row['id'],
+                "email_id": row['original_email_id'],
+                "to_email": row['to_email'],
+                "to_name": row['to_name'],
+                "subject": row['subject'],
+                "reply_body": row['reply_body'][:200] + "..." if len(row['reply_body'] or '') > 200 else row['reply_body'],
+                "sent_at": str(row['sent_at']),
+                "status": row['status'],
+                "was_modified": row['user_modifications'] is not None,
+                "email_type": row['email_type'],
+                "importance_score": row['importance_score']
+            })
+
+        # 전체 개수
+        cur.execute("SELECT COUNT(*) as total FROM sent_emails")
+        total = cur.fetchone()['total']
+
+        cur.close()
+        conn.close()
+
+        return {
+            "replies": replies,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        }
+
+    except Exception as e:
+        logger.error(f"답변 히스토리 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== 피드백 학습 API ==========
+
+@app.post("/feedback/learn")
+async def learn_from_feedback(
+    email_id: int,
+    original_draft: str,
+    final_reply: str,
+    selected_tone: str = "formal"
+):
+    """
+    사용자 피드백으로부터 학습
+
+    답변 발송 시 호출되어 RAG DB에 피드백을 저장합니다.
+    """
+    try:
+        # 이메일 정보 조회
+        email = db.get_email_by_id(email_id)
+        if not email:
+            raise HTTPException(status_code=404, detail="Email not found")
+
+        rag = get_rag_service()
+        if rag is None or not rag.is_ready():
+            return {
+                "success": False,
+                "message": "RAG 서비스가 준비되지 않아 피드백 학습을 건너뜁니다."
+            }
+
+        # 수정 여부 판단
+        was_modified = original_draft.strip() != final_reply.strip()
+
+        # RAG에 피드백 저장
+        success = rag.add_user_feedback(
+            email_id=email_id,
+            email_subject=email.get('subject', ''),
+            email_body=email.get('body_text', ''),
+            email_type=email.get('email_type', '기타'),
+            original_draft=original_draft,
+            final_reply=final_reply,
+            selected_tone=selected_tone,
+            was_modified=was_modified
+        )
+
+        return {
+            "success": success,
+            "email_id": email_id,
+            "was_modified": was_modified,
+            "message": "피드백 학습 완료" if success else "피드백 학습 실패"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"피드백 학습 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/feedback/stats")
+async def get_feedback_stats():
+    """
+    피드백 학습 통계 조회
+    """
+    try:
+        rag = get_rag_service()
+        if rag is None:
+            return {
+                "success": False,
+                "message": "RAG 서비스를 사용할 수 없습니다."
+            }
+
+        stats = rag.get_feedback_statistics()
+        return {
+            "success": True,
+            **stats
+        }
+
+    except Exception as e:
+        logger.error(f"피드백 통계 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/rag/feedback-enhanced-prompt")
+async def get_feedback_enhanced_prompt(email_id: int, preferred_tone: str = "formal"):
+    """
+    피드백 학습을 반영한 향상된 답변 프롬프트 생성
+
+    기존 템플릿 + 사용자 피드백 데이터를 활용하여
+    사용자 스타일에 맞는 답변 프롬프트를 생성합니다.
+    """
+    try:
+        rag = get_rag_service()
+        if rag is None or not rag.is_ready():
+            raise HTTPException(
+                status_code=503,
+                detail="RAG 서비스가 준비되지 않았습니다."
+            )
+
+        # 이메일 조회
+        email = db.get_email_by_id(email_id)
+        if not email:
+            raise HTTPException(status_code=404, detail="Email not found")
+
+        # 피드백 강화 프롬프트 생성
+        enhanced_prompt = rag.get_feedback_enhanced_reply_prompt(
+            email_subject=email.get('subject', ''),
+            email_body=email.get('body_text', ''),
+            email_type=email.get('email_type', '기타'),
+            sender_name=email.get('sender_name', ''),
+            preferred_tone=preferred_tone
+        )
+
+        return {
+            "success": True,
+            "email_id": email_id,
+            "preferred_tone": preferred_tone,
+            "enhanced_prompt": enhanced_prompt
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"피드백 강화 프롬프트 생성 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

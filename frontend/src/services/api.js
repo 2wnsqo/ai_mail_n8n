@@ -90,4 +90,77 @@ export const healthCheck = async () => {
   return response.data;
 };
 
+// ========== 통계 API ==========
+
+export const getStatsOverview = async () => {
+  const response = await api.get('/stats/overview');
+  return response.data;
+};
+
+export const getReplyHistory = async (limit = 20, offset = 0) => {
+  const response = await api.get('/stats/reply-history', {
+    params: { limit, offset },
+  });
+  return response.data;
+};
+
+// ========== 피드백 API ==========
+
+export const learnFromFeedback = async (emailId, originalDraft, finalReply, selectedTone = 'formal') => {
+  const response = await api.post('/feedback/learn', null, {
+    params: {
+      email_id: emailId,
+      original_draft: originalDraft,
+      final_reply: finalReply,
+      selected_tone: selectedTone,
+    },
+  });
+  return response.data;
+};
+
+export const getFeedbackStats = async () => {
+  const response = await api.get('/feedback/stats');
+  return response.data;
+};
+
+// ========== 고급 필터링 API ==========
+
+export const getEmailsFiltered = async (filters = {}) => {
+  const params = {
+    limit: filters.limit || 50,
+    offset: filters.offset || 0,
+    analyzed_only: filters.analyzedOnly || false,
+  };
+
+  const response = await api.get('/emails', { params });
+
+  // 클라이언트 사이드 필터링 (서버에서 지원 안 하는 필터)
+  let emails = response.data;
+
+  if (filters.emailType && filters.emailType !== 'all') {
+    emails = emails.filter((e) => e.email_type === filters.emailType);
+  }
+
+  if (filters.importance) {
+    const [min, max] = filters.importance;
+    emails = emails.filter(
+      (e) => e.importance_score >= min && e.importance_score <= max
+    );
+  }
+
+  if (filters.needsReply !== undefined) {
+    emails = emails.filter((e) => e.needs_reply === filters.needsReply);
+  }
+
+  if (filters.dateRange) {
+    const { start, end } = filters.dateRange;
+    emails = emails.filter((e) => {
+      const date = new Date(e.received_at);
+      return date >= start && date <= end;
+    });
+  }
+
+  return emails;
+};
+
 export default api;

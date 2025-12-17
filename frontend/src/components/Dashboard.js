@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import EmailList from './EmailList';
 import EmailDetail from './EmailDetail';
 import ReplyGenerator from './ReplyGenerator';
+import StatsPanel from './StatsPanel';
+import ReplyHistory from './ReplyHistory';
 import { syncEmails, generateDailySummary, getTodaySummary } from '../services/api';
 import '../styles/App.css';
 
@@ -15,6 +17,10 @@ const Dashboard = () => {
   const [showSummary, setShowSummary] = useState(false);
   const [summaryData, setSummaryData] = useState(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
+
+  // 새로운 상태: 통계 패널, 답변 히스토리
+  const [showStats, setShowStats] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const handleSelectEmail = (email) => {
     setSelectedEmail(email);
@@ -51,7 +57,7 @@ const Dashboard = () => {
 
       if (result.success) {
         setSyncMessage(
-          `✅ ${result.new_emails}개의 새 이메일이 동기화되었습니다. (전체: ${result.total_emails}개)`
+          `✅ ${result.new_emails}개의 새 이메일이 동기화되었습니다.`
         );
         // 이메일 목록 새로고침
         setRefreshKey((prev) => prev + 1);
@@ -127,7 +133,7 @@ const Dashboard = () => {
               onClick={handleGenerateSummary}
               disabled={syncing || summarizing}
             >
-              {summarizing ? '요약 생성 중...' : '📝 일일 요약 생성'}
+              {summarizing ? '요약 생성 중...' : '📝 일일 요약'}
             </button>
             <button
               className="sync-button view-summary-button"
@@ -135,6 +141,18 @@ const Dashboard = () => {
               disabled={syncing || summarizing}
             >
               📊 요약 보기
+            </button>
+            <button
+              className="sync-button stats-button"
+              onClick={() => setShowStats(true)}
+            >
+              📈 통계
+            </button>
+            <button
+              className="sync-button history-button"
+              onClick={() => setShowHistory(true)}
+            >
+              📬 답변 히스토리
             </button>
             {syncMessage && (
               <div className="sync-message">{syncMessage}</div>
@@ -241,6 +259,33 @@ const Dashboard = () => {
                 <div className="empty-state">요약 데이터가 없습니다.</div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 통계 패널 모달 */}
+      {showStats && (
+        <div className="modal-overlay" onClick={() => setShowStats(false)}>
+          <div
+            className="modal-content stats-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <StatsPanel onClose={() => setShowStats(false)} />
+          </div>
+        </div>
+      )}
+
+      {/* 답변 히스토리 모달 */}
+      {showHistory && (
+        <div className="modal-overlay" onClick={() => setShowHistory(false)}>
+          <div
+            className="modal-content history-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ReplyHistory
+              onClose={() => setShowHistory(false)}
+              onSelectEmail={handleSelectEmail}
+            />
           </div>
         </div>
       )}

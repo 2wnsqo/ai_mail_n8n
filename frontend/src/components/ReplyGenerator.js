@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { generateReply, sendReply } from '../services/api';
+import { generateReply, sendReply, learnFromFeedback } from '../services/api';
 import '../styles/App.css';
 
 const ReplyGenerator = ({ email, onClose, onReplySent }) => {
@@ -92,12 +92,31 @@ const ReplyGenerator = ({ email, onClose, onReplySent }) => {
 
     try {
       setSending(true);
+
+      // 1. 답변 발송
       await sendReply(
         email.id,
         editedReply,
         email.sender_address,
         email.sender_name
       );
+
+      // 2. 피드백 학습 (백그라운드에서 실행)
+      if (selectedDraft) {
+        try {
+          await learnFromFeedback(
+            email.id,
+            selectedDraft.content,  // 원본 AI 답변
+            editedReply,            // 최종 발송 답변 (수정됨 또는 원본)
+            selectedDraft.tone      // 선택한 톤
+          );
+          console.log('피드백 학습 완료');
+        } catch (feedbackError) {
+          // 피드백 학습 실패해도 답변 발송은 성공으로 처리
+          console.warn('피드백 학습 실패 (무시됨):', feedbackError);
+        }
+      }
+
       alert('답변이 성공적으로 발송되었습니다!');
       onReplySent();
       onClose();

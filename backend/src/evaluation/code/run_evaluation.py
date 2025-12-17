@@ -765,7 +765,7 @@ def main():
     parser = argparse.ArgumentParser(description="AI 메일 비서 성능 평가")
     parser.add_argument(
         "--phase",
-        choices=["phase1_baseline", "phase2_with_rag"],
+        choices=["phase1_baseline", "phase2_with_rag", "phase3_prompt_engineering", "phase4_advanced_rag"],
         default="phase1_baseline",
         help="평가 Phase 선택"
     )
