@@ -223,7 +223,7 @@ Response: {"success": true, "message": "Reply sent"}
 - **Type**: IMAP
 - **Host**: `imap.naver.com`
 - **Port**: `993`
-- **Email**: `2wnsqo@naver.com`
+- **Email**: `your_email@naver.com`
 - **Password**: `.env` 파일 참조
 - **Security**: SSL/TLS
 
@@ -231,7 +231,7 @@ Response: {"success": true, "message": "Reply sent"}
 - **Type**: SMTP
 - **Host**: `smtp.naver.com`
 - **Port**: `465`
-- **Email**: `2wnsqo@naver.com`
+- **Email**: `your_email@naver.com`
 - **Password**: `.env` 파일 참조
 - **Security**: SSL/TLS
 
@@ -276,7 +276,7 @@ curl -X POST http://localhost:5678/webhook-test/send-reply \
     "subject": "Re: 테스트",
     "reply_body": "안녕하세요...",
     "sender_name": "AI 비서",
-    "sender_email": "2wnsqo@naver.com"
+    "sender_email": "your_email@naver.com"
   }'
 ```
 
