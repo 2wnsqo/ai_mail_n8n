@@ -139,7 +139,17 @@ body {
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.dashboard-left {
   overflow: hidden;
+}
+
+.dashboard-right {
+  overflow: visible;
+  height: calc(100vh - 180px);
+  min-height: 600px;
+  max-height: 900px;
 }
 
 /* ========== Email List ========== */
@@ -330,9 +340,10 @@ body {
 
 /* ========== Email Detail ========== */
 .email-detail-container {
-  height: 800px;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .email-detail-header {
